@@ -2,6 +2,9 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+bebop
+bebop-mm
+
 *.exe
 *.exe~
 *.dll
@@ -18,7 +21,7 @@ coverage.*
 profile.cov
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
 
 # Go workspace file
 go.work
@@ -26,7 +29,28 @@ go.work.sum
 
 # env file
 .env
+.env.local
+.env.*.local
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+# macOS
+.DS_Store
+
+# 私钥文件
+*.key
+*.pem
+keystore/
+
+# 日志
+*.log
+logs/
+
+# 数据库
+*.db
+*.sqlite
+

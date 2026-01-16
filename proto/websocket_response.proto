@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package bebop;
+
+option go_package ="bebop/proto";
+
+message WebSocketMsg {
+  int32 code = 1;
+  string text = 2;
+  optional string reason = 3;  // used for error messages
+}
+
+message WebSocketResponse {
+  uint32 chain_id = 1;
+  string msg_topic = 2;
+  string msg_type = 3;
+  WebSocketMsg msg = 4;
+} 
