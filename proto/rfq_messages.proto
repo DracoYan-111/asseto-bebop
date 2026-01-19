@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package bebop;
+
+option go_package = "bebop/proto";
+
+// Root message to encompass all trade and quote-related messages
+message CombinedMessage {
+  TradeUpdate trade_update = 1;
+  QuoteRequest quote_request = 2;
+}
+
+message TradeUpdate {
+  uint32 chain_id = 1;
+  string msg_topic = 2;
+  string msg_type = 3;
+  TradeMessage msg = 4;
+}
+
+message TradeMessage {
+  string quote_id = 1;
+  string tx_hash = 2;
+  string executor = 3;  // 'bebop' for gasless, 'taker' for self-execution
+  string event_id = 4;
+  string status = 5;
+  int64 order_time = 6;  // UNIX timestamp in nanoseconds
+  double fee_native = 7;
+  double surplus = 8;  // In native token
+  string surplus_recipient = 9;
+  string prev_quote_id = 10;
+  repeated Quote quotes = 11;
+  repeated Quote prev_quotes = 12;
+}
+
+message Quote {
+  string taker_token = 1;
+  string taker_amount = 2;  // In smallest units (e.g., wei)
+  string maker_token = 3;
+  string maker_amount = 4;  // In smallest units (e.g., wei)
+  string filled_taker_amount = 5;
+  string filled_maker_amount = 6;
+}
+
+message QuoteRequest {
+  uint32 chain_id = 1;
+  string msg_topic = 2;
+  string msg_type = 3;
+  QuoteMessage msg = 4;
+}
+
+message QuoteMessage {
+  string quote_id = 1;
+  string event_id = 2;
+  string order_signing_type = 3;
+  string order_type = 4;
+  uint32 onchain_partner_id = 5;
+  int64 expiry = 6;  // UNIX timestamp
+  string taker_address = 7;
+  string origin_address = 8;
+  string maker_address = 9;  // This can be null, handle as optional
+  string maker_nonce = 10;
+  repeated Quote quotes = 11;
+  string receiver = 12;
+  string commands = 13;
+  uint32 packed_commands = 14;
+  double fee_native = 15;
+  repeated string taker_tokens = 16;
+  repeated string maker_tokens = 17;
+  repeated int32 taker_tokens_indices = 18;
+  repeated int32 maker_tokens_indices = 19;
+  bool is_aggregate_order = 20;
+}

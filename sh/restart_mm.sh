@@ -14,9 +14,17 @@ echo ""
 
 # 1. 停止所有相关进程
 echo "1️⃣  停止旧进程..."
+# 先尝试正常终止 (SIGTERM)，让程序有机会关闭 WS 连接
+pkill -f "go run ." 2>/dev/null
+pkill -x "bebop" 2>/dev/null
+sleep 2
+
+# 强制终止 (SIGKILL)
 pkill -9 -f "go run ." 2>/dev/null
 pkill -9 -x "bebop" 2>/dev/null
-sleep 1
+
+echo "   ⏳ 等待 WebSocket 连接完全关闭..."
+sleep 10  # 增加到 10 秒，确保服务器端连接超时清理
 
 # 2. 检查是否还有进程运行
 if pgrep -fl "go run ." || pgrep -xl "bebop"; then

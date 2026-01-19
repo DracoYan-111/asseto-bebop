@@ -75,21 +75,6 @@ func CreateSamplePricingWithMode(mode ExecutionMode) PricingData {
 		return spread
 	}
 	// Maker address
-	makerAddr := "0x95B89a3bB25FCBeD8E30052a8BDf77f106c1B554"
-
-	// --- Addresses/decimals ---
-	// WBNB (Wrapped BNB)
-	wbnbAddress := "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
-	wbnbDecimals := uint32(18)
-	// USDC (USD Coin)
-	usdcAddress := "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
-	usdcDecimals := uint32(18)
-	// USDT (Binance-Peg BSC-USD)
-	usdtAddress := "0x55d398326f99059fF775485246999027B3197955"
-	usdtDecimals := uint32(18)
-	// CASH+
-	cashPlusAddress := "0x1775504c5873e179Ea2f8ABFcE3861EC74D159bc"
-	cashPlusDecimals := uint32(18)
 
 	chainIDStr := "56"
 	chainID := uint32(56)
@@ -98,10 +83,6 @@ func CreateSamplePricingWithMode(mode ExecutionMode) PricingData {
 	}
 
 	// --- Build levels ---
-	// 注意：这些价格应与 rfq_handler.go 中的 getTokenPrice 保持一致
-	wbnbUsdtMid := 940.12     // WBNB 当前市场价格
-	cashPlusUsdtMid := 106.70 // CASH+ 当前市场价格
-
 	wbnbSpread := spreadFor(wbnbUsdtMid)
 	cashPlusSpread := spreadFor(cashPlusUsdtMid)
 
@@ -210,13 +191,6 @@ func BuildPricingMessage(data PricingData) ([]byte, error) {
 	}
 
 	return proto.Marshal(msg)
-}
-
-// ParseServerResponse 解析服务器的 Protobuf 响应
-func ParseServerResponse(data []byte) (*pb.WebSocketResponse, error) {
-	resp := &pb.WebSocketResponse{}
-	err := proto.Unmarshal(data, resp)
-	return resp, err
 }
 
 // flattenPriceLevels 将价格层级数组扁平化为 [price, amount, price, amount, ...] 格式

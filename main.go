@@ -122,7 +122,7 @@ func runMarketMaker(cfg Config) bool {
 	errChan := make(chan error, 3) // 错误通道
 
 	go StreamPricing(ctx, cfg, errChan)
-	// go StreamQuotes(ctx, cfg, errChan)
+	go StreamQuotes(ctx, cfg, errChan)
 	// go StreamTrades(ctx, cfg, errChan)
 
 	// 等待退出信号
