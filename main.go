@@ -15,78 +15,9 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// DialWS 连接到 Bebop WebSocket 服务器
-func DialWS(ctx context.Context, url, marketMaker, auth string, selfExec bool) (*websocket.Conn, error) {
-	headers := http.Header{
-		"marketmaker":   {marketMaker},
-		"authorization": {auth},
-	}
-
-	// 如果需要自执行, 则添加自执行参数
-	if selfExec {
-		if strings.Contains(url, "?") {
-			url += "&execution_mode=self"
-		} else {
-			url += "?execution_mode=self"
-		}
-	}
-
-	// 连接到 WebSocket 服务器
-	conn, resp, err := (&websocket.Dialer{
-		HandshakeTimeout: handshakeTimeout,          // 握手超时时间
-		Proxy:            http.ProxyFromEnvironment, // 使用系统代理
-	}).DialContext(ctx, url, headers) // 返回连接和响应
-
-	if err != nil && resp != nil {
-		log.Printf("连接失败: %s", resp.Status) // 连接失败, 打印错误信息
-		if body, _ := io.ReadAll(resp.Body); len(body) > 0 {
-			log.Printf("错误详情: %s", body) // 读取错误详情
-		}
-		resp.Body.Close() // 关闭响应体
-	}
-	return conn, err // 返回连接和错误信息
-}
-
-// wsLoop 通用 WebSocket 监听循环（带 keepalive）
-func wsLoop(ctx context.Context, conn *websocket.Conn, name string, handler MessageHandler, errChan chan error) {
-	// 写入锁
-	var writeMu sync.Mutex
-	for {
-		select {
-		case <-ctx.Done(): // 上下文取消
-			return
-		default: // 默认情况
-		}
-
-		conn.SetReadDeadline(time.Now().Add(readDeadline)) // 设置读取超时时间
-		msgType, msg, err := conn.ReadMessage()            // 读取消息
-		if err != nil {
-			log.Printf("✗ %s 读取失败: %v", name, err)
-			errChan <- err // 发送错误信息
-			return
-		}
-
-		// keepalive: 空消息 => 回复空消息
-		if len(msg) == 0 {
-			writeMu.Lock()
-			conn.SetWriteDeadline(time.Now().Add(writeDeadline))       // 设置写入超时时间
-			err = conn.WriteMessage(websocket.TextMessage, []byte("")) // 发送空消息
-			writeMu.Unlock()
-			if err != nil {
-				log.Printf("✗ %s keepalive 失败: %v", name, err)
-				errChan <- err // 发送错误信息
-				return
-			}
-			continue // 继续
-		}
-
-		if handler != nil {
-			if err := handler(msgType, msg); err != nil { // 处理消息
-				log.Printf("✗ %s 处理消息失败: %v", name, err)
-			}
-		}
-	}
-}
+// =============================================================================
+// 程序入口
+// =============================================================================
 
 func main() {
 	cfg := Config{
@@ -111,31 +42,110 @@ func main() {
 	}
 }
 
-// runMarketMaker 运行 Market Maker（单次连接）
+// =============================================================================
+// Market Maker 运行
+// =============================================================================
+
+// runMarketMaker 运行单次 Market Maker 连接
+// 返回 true 表示正常退出，false 表示需要重连
 func runMarketMaker(cfg Config) bool {
+	startTime := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	startTime := time.Now()                                 // 开始时间
-	ctx, cancel := context.WithCancel(context.Background()) // 创建上下文
-	defer cancel()                                          // 延迟关闭上下文
+	errChan := make(chan error, 3)
 
-	// 启动所有连接
-	errChan := make(chan error, 3) // 错误通道
-
+	// 启动 WebSocket 流
 	go StreamPricing(ctx, cfg, errChan)
 	go StreamQuotes(ctx, cfg, errChan)
 	go StreamTrades(ctx, cfg, errChan)
 
-	// 等待退出信号
-	sigChan := make(chan os.Signal, 1)                    // 信号通道
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) // 监听中断信号
-	log.Println("按 Ctrl+C 停止...")                         // 打印提示信息
+	// 等待信号
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	log.Println("按 Ctrl+C 停止...")
 
 	select {
 	case <-sigChan:
-		log.Println("✓ 收到中断信号，正在关闭...") // 打印提示信息
-		return true                     // 返回 true
+		log.Println("✓ 收到中断信号，正在关闭...")
+		return true
 	case err := <-errChan:
-		log.Printf("✗ 连接异常: %v (持续 %v)", err, time.Since(startTime).Round(time.Second)) // 打印提示信息
-		return false                                                                    // 返回 false
+		log.Printf("✗ 连接异常: %v (持续 %v)", err, time.Since(startTime).Round(time.Second))
+		return false
+	}
+}
+
+// =============================================================================
+// WebSocket 工具函数
+// =============================================================================
+
+// DialWS 连接 Bebop WebSocket 服务器
+func DialWS(ctx context.Context, url, marketMaker, auth string, selfExec bool) (*websocket.Conn, error) {
+	headers := http.Header{
+		"marketmaker":   {marketMaker},
+		"authorization": {auth},
+	}
+
+	if selfExec {
+		sep := "?"
+		if strings.Contains(url, "?") {
+			sep = "&"
+		}
+		url += sep + "execution_mode=self"
+	}
+
+	conn, resp, err := (&websocket.Dialer{
+		HandshakeTimeout: handshakeTimeout,
+		Proxy:            http.ProxyFromEnvironment,
+	}).DialContext(ctx, url, headers)
+
+	if err != nil && resp != nil {
+		log.Printf("连接失败: %s", resp.Status)
+		if body, _ := io.ReadAll(resp.Body); len(body) > 0 {
+			log.Printf("错误详情: %s", body)
+		}
+		resp.Body.Close()
+	}
+	return conn, err
+}
+
+// wsLoop WebSocket 监听循环（带 keepalive）
+func wsLoop(ctx context.Context, conn *websocket.Conn, name string, handler MessageHandler, errChan chan error) {
+	var mu sync.Mutex
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		conn.SetReadDeadline(time.Now().Add(readDeadline))
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("✗ %s 读取失败: %v", name, err)
+			errChan <- err
+			return
+		}
+
+		// Keepalive: 空消息回复空消息
+		if len(msg) == 0 {
+			mu.Lock()
+			conn.SetWriteDeadline(time.Now().Add(writeDeadline))
+			err = conn.WriteMessage(websocket.TextMessage, []byte(""))
+			mu.Unlock()
+			if err != nil {
+				log.Printf("✗ %s keepalive 失败: %v", name, err)
+				errChan <- err
+				return
+			}
+			continue
+		}
+
+		if handler != nil {
+			if err := handler(msgType, msg); err != nil {
+				log.Printf("✗ %s 处理消息失败: %v", name, err)
+			}
+		}
 	}
 }
