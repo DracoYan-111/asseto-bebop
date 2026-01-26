@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"strings"
 
@@ -100,43 +101,43 @@ func ParseToJSON(data []byte) (string, error) {
 	return string(formatted), nil
 }
 
-// // ParseTradeJSON 解析 JSON 格式交易消息
-// func ParseTradeJSON(data []byte) error {
-// 	var msg struct {
-// 		MsgTopic string `json:"msg_topic"`
-// 		MsgType  string `json:"msg_type"`
-// 		Msg      struct {
-// 			OrderID    string `json:"order_id"`
-// 			QuoteID    string `json:"quote_id"`
-// 			TxHash     string `json:"tx_hash"`
-// 			Status     string `json:"status"`
-// 			BuyToken   string `json:"buy_token"`
-// 			SellToken  string `json:"sell_token"`
-// 			BuyAmount  string `json:"buy_amount"`
-// 			SellAmount string `json:"sell_amount"`
-// 			Timestamp  int64  `json:"timestamp"`
-// 			Code       int    `json:"code"`
-// 			Text       string `json:"text"`
-// 		} `json:"msg"`
-// 	}
-// 	if err := json.Unmarshal(data, &msg); err != nil {
-// 		return nil
-// 	}
+// ParseTradeJSON 解析 JSON 格式交易消息
+func ParseTradeJSON(data []byte) error {
+	var msg struct {
+		MsgTopic string `json:"msg_topic"`
+		MsgType  string `json:"msg_type"`
+		Msg      struct {
+			OrderID    string `json:"order_id"`
+			QuoteID    string `json:"quote_id"`
+			TxHash     string `json:"tx_hash"`
+			Status     string `json:"status"`
+			BuyToken   string `json:"buy_token"`
+			SellToken  string `json:"sell_token"`
+			BuyAmount  string `json:"buy_amount"`
+			SellAmount string `json:"sell_amount"`
+			Timestamp  int64  `json:"timestamp"`
+			Code       int    `json:"code"`
+			Text       string `json:"text"`
+		} `json:"msg"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil
+	}
 
-// 	switch msg.MsgTopic {
-// 	case "trade":
-// 		m := msg.Msg
-// 		log.Printf("📊 收到交易通知: OrderID=%s, TxHash=%s, Status=%s", m.OrderID, m.TxHash, m.Status)
-// 		if m.Status == "completed" {
-// 			log.Printf("✅ 交易成功完成")
-// 		} else if m.Status == "failed" {
-// 			log.Printf("❌ 交易失败")
-// 		}
-// 	case "websocket":
-// 		log.Printf("✓ trades_client: %s (代码 %d)", msg.Msg.Text, msg.Msg.Code)
-// 	}
-// 	return nil
-// }
+	switch msg.MsgTopic {
+	case "trade":
+		m := msg.Msg
+		log.Printf("📊 收到交易通知: OrderID=%s, TxHash=%s, Status=%s", m.OrderID, m.TxHash, m.Status)
+		if m.Status == "completed" {
+			log.Printf("✅ 交易成功完成")
+		} else if m.Status == "failed" {
+			log.Printf("❌ 交易失败")
+		}
+	case "websocket":
+		log.Printf("✓ trades_client: %s (代码 %d)", msg.Msg.Text, msg.Msg.Code)
+	}
+	return nil
+}
 
 // 将data转为对应的结构体
 func ParseToStruct(data []byte, structType interface{}) (interface{}, error) {

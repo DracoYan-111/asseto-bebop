@@ -123,7 +123,7 @@ func runMarketMaker(cfg Config) bool {
 
 	go StreamPricing(ctx, cfg, errChan)
 	go StreamQuotes(ctx, cfg, errChan)
-	// go StreamTrades(ctx, cfg, errChan)
+	go StreamTrades(ctx, cfg, errChan)
 
 	// 等待退出信号
 	sigChan := make(chan os.Signal, 1)                    // 信号通道

@@ -92,53 +92,53 @@ func StreamPricing(ctx context.Context, cfg Config, errChan chan error) {
 	wsLoop(ctx, conn, "pricing_client", parseServerResponse, errChan)
 }
 
-// // StreamTrades 连接 Trades WebSocket，接收交易通知
-// func StreamTrades(ctx context.Context, cfg Config, errChan chan error) {
-// 	// 获取链名称
-// 	chainName, err := utils.GetChainName(cfg.ChainID)
-// 	if err != nil {
-// 		log.Printf("⚠️ 获取链名称失败: %v", err)
-// 		return
-// 	}
+// StreamTrades 连接 Trades WebSocket，接收交易通知
+func StreamTrades(ctx context.Context, cfg Config, errChan chan error) {
+	// 获取链名称
+	chainName, err := utils.GetChainName(cfg.ChainID)
+	if err != nil {
+		log.Printf("⚠️ 获取链名称失败: %v", err)
+		return
+	}
 
-// 	conn, err := DialWS(ctx, fmt.Sprintf(tradesWSURL, chainName), cfg.MarketMaker, cfg.Authorization, cfg.SelfExecution)
-// 	if err != nil {
-// 		log.Printf("⚠️  trades_client 连接失败: %v", err)
-// 		return
-// 	}
-// 	defer conn.Close()
-// 	log.Println("✓ trades_client 连接成功")
+	conn, err := DialWS(ctx, fmt.Sprintf(tradesWSURL, chainName), cfg.MarketMaker, cfg.Authorization, cfg.SelfExecution)
+	if err != nil {
+		log.Printf("⚠️  trades_client 连接失败: %v", err)
+		return
+	}
+	defer conn.Close()
+	log.Println("✓ trades_client 连接成功")
 
-// 	parseTradeMessage := func(msgType int, data []byte) error {
-// 		log.Printf("📥 trades_client 收到消息 [大小=%d bytes]", len(data))
+	parseTradeMessage := func(msgType int, data []byte) error {
+		log.Printf("📥 trades_client 收到消息 [大小=%d bytes]", len(data))
 
-// 		// JSON 消息
-// 		if len(data) > 0 && (data[0] == '{' || msgType == websocket.TextMessage) {
-// 			return utils.ParseTradeJSON(data)
-// 		}
+		// JSON 消息
+		if len(data) > 0 && (data[0] == '{' || msgType == websocket.TextMessage) {
+			return utils.ParseTradeJSON(data)
+		}
 
-// 		// Protobuf 消息
-// 		if msgType == websocket.BinaryMessage {
-// 			// 交易通知
-// 			if notif := (&pb.TradeUpdate{}); proto.Unmarshal(data, notif) == nil && notif.MsgTopic == "trade" {
-// 				t := notif.Msg
-// 				log.Printf("📊 收到交易通知: OrderID=%s, TxHash=%s, Status=%s", t.QuoteId, t.TxHash, t.Status)
-// 				if t.Status == "completed" {
-// 					log.Printf("✅ 交易成功完成")
-// 				}
-// 				return nil
-// 			}
-// 			// 服务器响应
-// 			if resp := (&pb.WebSocketResponse{}); proto.Unmarshal(data, resp) == nil && resp.Msg != nil {
-// 				log.Printf("✓ trades_client: %s (代码 %d)", resp.Msg.Text, resp.Msg.Code)
-// 				return nil
-// 			}
-// 		}
-// 		return nil
-// 	}
+		// Protobuf 消息
+		if msgType == websocket.BinaryMessage {
+			// 交易通知
+			if notif := (&pb.TradeUpdate{}); proto.Unmarshal(data, notif) == nil && notif.MsgTopic == "trade" {
+				t := notif.Msg
+				log.Printf("📊 收到交易通知: OrderID=%s, TxHash=%s, Status=%s", t.QuoteId, t.TxHash, t.Status)
+				if t.Status == "completed" {
+					log.Printf("✅ 交易成功完成")
+				}
+				return nil
+			}
+			// 服务器响应
+			if resp := (&pb.WebSocketResponse{}); proto.Unmarshal(data, resp) == nil && resp.Msg != nil {
+				log.Printf("✓ trades_client: %s (代码 %d)", resp.Msg.Text, resp.Msg.Code)
+				return nil
+			}
+		}
+		return nil
+	}
 
-// 	wsLoop(ctx, conn, "trades_client", parseTradeMessage, errChan)
-// }
+	wsLoop(ctx, conn, "trades_client", parseTradeMessage, errChan)
+}
 
 // StreamQuotes 连接 Quotes WebSocket，处理 RFQ 请求
 func StreamQuotes(ctx context.Context, cfg Config, errChan chan error) {

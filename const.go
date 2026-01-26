@@ -9,7 +9,7 @@ import (
 
 const (
 	// 注意：这些价格应与 rfq_handler.go 中的 getTokenPrice 保持一致
-	wbnbUsdtMid     = 940.12 // WBNB 当前市场价格
+	wbnbUsdtMid     = 879.00 // WBNB 价格（与 Bebop 测试价格一致）
 	cashPlusUsdtMid = 106.71 // CASH+ 当前市场价格
 
 	makerAddr = "0x95B89a3bB25FCBeD8E30052a8BDf77f106c1B554"
