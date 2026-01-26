@@ -44,13 +44,6 @@ func (h *RFQHandler) handleJSONQuoteRequest(msg QuoteRequest) error {
 			Signature:  signature,
 		}
 
-		jsonStr1, err := json.MarshalIndent(quoteResponse, "", "  ")
-		if err != nil {
-			log.Printf("⚠️ JSON 格式化错误: %v", err)
-			return err
-		}
-		log.Printf("📋 构建的单个订单: %s", string(jsonStr1))
-
 		// 序列化并发送
 		respData, err := json.Marshal(quoteResponse)
 		if err != nil {
@@ -83,13 +76,6 @@ func (h *RFQHandler) handleJSONQuoteRequest(msg QuoteRequest) error {
 			SignScheme: "EIP712",
 			Signature:  signature,
 		}
-
-		jsonStr1, err := json.MarshalIndent(quoteResponse, "", "  ")
-		if err != nil {
-			log.Printf("⚠️ JSON 格式化错误: %v", err)
-			return err
-		}
-		log.Printf("📋 构建的 MultiOrder 响应: %s", string(jsonStr1))
 
 		// 序列化并发送
 		respData, err := json.Marshal(quoteResponse)
@@ -372,8 +358,6 @@ func (h *RFQHandler) buildMultiOrder(msg QuoteRequest) (MultiOrder, QuoteRequest
 	}
 
 	expiry := new(big.Int).SetInt64(int64(msg.Msg.Expiry))
-	log.Println("onchain_partner_id:", uint64(msg.Msg.OnchainPartnerID))
-	log.Println("expiry:", expiry.String())
 
 	multiOrder := MultiOrder{
 		PartnerID:    uint64(msg.Msg.OnchainPartnerID),

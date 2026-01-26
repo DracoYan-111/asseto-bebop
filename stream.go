@@ -110,7 +110,6 @@ func StreamTrades(ctx context.Context, cfg Config, errChan chan error) {
 	log.Println("✓ trades_client 连接成功")
 
 	parseTradeMessage := func(msgType int, data []byte) error {
-		log.Printf("📥 trades_client 收到消息 [大小=%d bytes]", len(data))
 
 		// JSON 消息
 		if len(data) > 0 && (data[0] == '{' || msgType == websocket.TextMessage) {
@@ -177,8 +176,6 @@ func StreamQuotes(ctx context.Context, cfg Config, errChan chan error) {
 	log.Println("   ✓ RFQ 处理器已就绪")
 	// 接收bebop服务端的消息转换为json并打印
 	parseIncomingMessage := func(msgType int, data []byte) error {
-		// 打印收到的消息基本信息
-		log.Printf("📥 quotes_client 收到消息 [type=%d, size=%d bytes]", msgType, len(data))
 		// 转换为JSON
 		var msg QuoteRequest
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -193,17 +190,9 @@ func StreamQuotes(ctx context.Context, cfg Config, errChan chan error) {
 			quoteReq := &QuoteRequest{}
 			if err := json.Unmarshal(data, quoteReq); err != nil {
 				log.Printf("⚠️ JSON 解析错误: %v", err)
-				log.Printf("📝 原始数据: %s", string(data))
 				return nil
 			}
 
-			//打印json
-			jsonStr, err := json.MarshalIndent(quoteReq, "", "  ")
-			if err != nil {
-				log.Printf("⚠️ JSON 格式化错误: %v", err)
-				return nil
-			}
-			log.Printf("📋 收到 RFQ 报价请求: %s", string(jsonStr))
 			rfqHandler.handleJSONQuoteRequest(*quoteReq)
 			// case topicWebSocket:
 			// 	// 将请求转为可读的json并打印
