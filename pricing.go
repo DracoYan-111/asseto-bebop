@@ -7,197 +7,145 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// PairLevel 定义单个交易对的价格层级
-//
-// 包含：
-// - 基础代币和报价代币的地址和精度
-// - 买单层级（Bids）：价格从低到高，数量递增
-// - 卖单层级（Asks）：价格从高到低，数量递增
-type PairLevel struct {
-	BaseAddress   string
-	BaseDecimals  uint32
-	QuoteAddress  string
-	QuoteDecimals uint32
-	Bids          [][2]float64
-	Asks          [][2]float64
-}
+// =============================================================================
+// 常量定义
+// =============================================================================
 
-// PricingData 定义完整的定价数据
-//
-// 包含：
-// - 链 ID（用于标识区块链网络）
-// - Market Maker 地址（用于标识报价来源）
-// - 所有交易对的价格层级
-type PricingData struct {
-	ChainID      uint32
-	MakerAddress string
-	Levels       []PairLevel
-}
-
-// ExecutionMode 执行模式
+// ExecutionMode 交易执行模式
 type ExecutionMode int
 
 const (
-	GaslessMode     ExecutionMode = iota // Bebop 执行（默认）
-	SelfExecuteMode                      // 用户自己执行
+	GaslessMode     ExecutionMode = iota // Bebop 代执行（用户无需支付 gas）
+	SelfExecuteMode                      // 用户自执行（用户自己支付 gas）
 )
 
+// 价差配置
+const (
+	selfExecuteSpread = 0.003 // 自执行模式价差 (0.3%)
+	gaslessSpread     = 0.005 // 代执行模式基础价差 (0.5%)
+	gasEstimateUSD    = 10.0  // 预估 gas 成本 (USD)
+	defaultChainID    = 56    // 默认链 ID (BSC)
+)
+
+// =============================================================================
+// 数据结构
+// =============================================================================
+
+// PairLevel 交易对价格层级
+type PairLevel struct {
+	BaseAddress   string       // 基础代币地址
+	BaseDecimals  uint32       // 基础代币精度
+	QuoteAddress  string       // 报价代币地址
+	QuoteDecimals uint32       // 报价代币精度
+	Bids          [][2]float64 // 买单 [[价格, 数量], ...]
+	Asks          [][2]float64 // 卖单 [[价格, 数量], ...]
+}
+
+// PricingData 完整定价数据
+type PricingData struct {
+	ChainID      uint32      // 链 ID
+	MakerAddress string      // Market Maker 地址
+	Levels       []PairLevel // 所有交易对层级
+}
+
+// =============================================================================
+// 公共函数
+// =============================================================================
+
+// CreateSamplePricing 创建示例定价数据（默认自执行模式）
 func CreateSamplePricing() PricingData {
 	return CreateSamplePricingWithMode(SelfExecuteMode)
 }
 
+// CreateSamplePricingWithMode 根据执行模式创建定价数据
 func CreateSamplePricingWithMode(mode ExecutionMode) PricingData {
-	// === 步骤 1: 获取市场价格 ===
-
-	// === 步骤 2: 设置价差 ===
-	spread := 0.005 // 0.5%
-
-	if mode == SelfExecuteMode {
-		// Self Execution 模式：用户支付 gas，价差可以更小
-		spread = 0.003 // 0.3%
-	} else {
-		// Gasless 模式：需要在价差中包含执行/gas 风险
-		gasUsd := 10.0
-		// 下面会为每个交易对单独应用 gas 影响
-		_ = gasUsd
-	}
-
-	// 每对价差调整（无气债券增加气体影响）
-	spreadFor := func(mid float64) float64 {
-		if mid <= 0 {
-			return spread
-		}
-		if mode == GaslessMode {
-			gasUsd := 10.0
-			gasImpact := gasUsd / mid
-			return spread + gasImpact
-		}
-		return spread
-	}
-	// Maker address
-
-	chainIDStr := "56"
-	chainID := uint32(56)
-	if v, err := utils.ParseUint32(chainIDStr); err == nil {
-		chainID = v
-	}
-
-	// --- Build levels ---
-	wbnbSpread := spreadFor(wbnbUsdtMid)
-	cashPlusSpread := spreadFor(cashPlusUsdtMid)
+	// 计算价差
+	wbnbSpread := calculateSpread(mode, wbnbUsdtMid)
+	cashSpread := calculateSpread(mode, cashPlusUsdtMid)
 
 	return PricingData{
-		ChainID:      chainID,
+		ChainID:      defaultChainID,
 		MakerAddress: makerAddr,
 		Levels: []PairLevel{
-			{
-				// WBNB/USDT
-				BaseAddress:   wbnbAddress,
-				BaseDecimals:  wbnbDecimals,
-				QuoteAddress:  usdtAddress,
-				QuoteDecimals: usdtDecimals,
-				Bids: [][2]float64{
-					{wbnbUsdtMid * (1 - wbnbSpread), 0.2},   //  0.2 WBNB
-					{wbnbUsdtMid * (1 - wbnbSpread*2), 0.3}, //  0.3 WBNB
-					{wbnbUsdtMid * (1 - wbnbSpread*3), 0.4}, //  0.4 WBNB (总: 0.9 WBNB)
-				},
-				Asks: [][2]float64{
-					{wbnbUsdtMid * (1 + wbnbSpread), 0.2},   //  0.2 WBNB
-					{wbnbUsdtMid * (1 + wbnbSpread*2), 0.3}, //  0.3 WBNB
-					{wbnbUsdtMid * (1 + wbnbSpread*3), 0.4}, //  0.4 WBNB (总: 0.9 WBNB)
-				},
-			},
-			{
-				// WBNB/USDC
-				BaseAddress:   wbnbAddress,
-				BaseDecimals:  wbnbDecimals,
-				QuoteAddress:  usdcAddress,
-				QuoteDecimals: usdcDecimals,
-				Bids: [][2]float64{
-					{wbnbUsdtMid * (1 - wbnbSpread), 0.2},   //  0.2 WBNB
-					{wbnbUsdtMid * (1 - wbnbSpread*2), 0.3}, //  0.3 WBNB
-					{wbnbUsdtMid * (1 - wbnbSpread*3), 0.4}, //  0.4 WBNB (总: 0.9 WBNB)
-				},
-				Asks: [][2]float64{
-					{wbnbUsdtMid * (1 + wbnbSpread), 0.2},   //  0.2 WBNB
-					{wbnbUsdtMid * (1 + wbnbSpread*2), 0.3}, //  0.3 WBNB
-					{wbnbUsdtMid * (1 + wbnbSpread*3), 0.4}, //  0.4 WBNB (总: 0.9 WBNB)
-				},
-			},
-			{
-				// CASH+/USDC
-				BaseAddress:   cashPlusAddress,
-				BaseDecimals:  cashPlusDecimals,
-				QuoteAddress:  usdcAddress,
-				QuoteDecimals: usdcDecimals,
-				Bids: [][2]float64{
-					// 买入 CASH+，支付 USDC
-					{cashPlusUsdtMid * (1 - cashPlusSpread), 0.1},   // 0.1 CASH+ = ~$10.67
-					{cashPlusUsdtMid * (1 - cashPlusSpread*2), 0.2}, // 0.2 CASH+ = ~$21.34
-					{cashPlusUsdtMid * (1 - cashPlusSpread*3), 0.3}, // 0.3 CASH+ = ~$32.01
-				},
-				Asks: [][2]float64{
-					// 买入 USDC，支付 CASH+
-					{cashPlusUsdtMid * (1 + cashPlusSpread), 0.1},   // 0.1 CASH+ = ~$10.67
-					{cashPlusUsdtMid * (1 + cashPlusSpread*2), 0.2}, // 0.2 CASH+ = ~$21.34
-					{cashPlusUsdtMid * (1 + cashPlusSpread*3), 0.3}, // 0.3 CASH+ = ~$32.01
-				},
-			},
-			{
-				// cash+/USDT
-				BaseAddress:   cashPlusAddress,
-				BaseDecimals:  cashPlusDecimals,
-				QuoteAddress:  usdtAddress,
-				QuoteDecimals: usdtDecimals,
-				Bids: [][2]float64{
-					// 买入 CASH+，支付 USDC
-					{cashPlusUsdtMid * (1 - cashPlusSpread), 0.1},   // 0.1 CASH+ = ~$10.67
-					{cashPlusUsdtMid * (1 - cashPlusSpread*2), 0.2}, // 0.2 CASH+ = ~$21.34
-					{cashPlusUsdtMid * (1 - cashPlusSpread*3), 0.3}, // 0.3 CASH+ = ~$32.01
-				},
-				Asks: [][2]float64{
-					// 买入 USDC，支付 CASH+
-					{cashPlusUsdtMid * (1 + cashPlusSpread), 0.1},   // 0.1 CASH+ = ~$10.67
-					{cashPlusUsdtMid * (1 + cashPlusSpread*2), 0.2}, // 0.2 CASH+ = ~$21.34
-					{cashPlusUsdtMid * (1 + cashPlusSpread*3), 0.3}, // 0.3 CASH+ = ~$32.01
-				},
-			},
+			buildPairLevel(wbnbAddress, wbnbDecimals, usdtAddress, usdtDecimals, wbnbUsdtMid, wbnbSpread),
+			buildPairLevel(wbnbAddress, wbnbDecimals, usdcAddress, usdcDecimals, wbnbUsdtMid, wbnbSpread),
+			buildPairLevel(cashPlusAddress, cashPlusDecimals, usdcAddress, usdcDecimals, cashPlusUsdtMid, cashSpread),
+			buildPairLevel(cashPlusAddress, cashPlusDecimals, usdtAddress, usdtDecimals, cashPlusUsdtMid, cashSpread),
 		},
 	}
 }
 
+// BuildPricingMessage 将定价数据序列化为 Protobuf 消息
 func BuildPricingMessage(data PricingData) ([]byte, error) {
-	msg := &pb.LevelsSchema{
-		ChainId:  data.ChainID,
-		MsgTopic: "pricing",
-		MsgType:  "update",
-		Msg: &pb.LevelMsg{
-			MakerAddress: utils.HexToBytes(data.MakerAddress),
-			Levels:       make([]*pb.LevelInfo, 0, len(data.Levels)),
-		},
-	}
-
-	// 构建每个交易对的层级信息
+	levels := make([]*pb.LevelInfo, 0, len(data.Levels))
 	for _, level := range data.Levels {
-		levelInfo := &pb.LevelInfo{
+		levels = append(levels, &pb.LevelInfo{
 			BaseAddress:   utils.HexToBytes(level.BaseAddress),
 			BaseDecimals:  level.BaseDecimals,
 			QuoteAddress:  utils.HexToBytes(level.QuoteAddress),
 			QuoteDecimals: level.QuoteDecimals,
-			Bids:          flattenPriceLevels(level.Bids),
-			Asks:          flattenPriceLevels(level.Asks),
-		}
-		msg.Msg.Levels = append(msg.Msg.Levels, levelInfo)
+			Bids:          flattenLevels(level.Bids),
+			Asks:          flattenLevels(level.Asks),
+		})
+	}
+
+	msg := &pb.LevelsSchema{
+		ChainId:  data.ChainID,
+		MsgTopic: "pricing",
+		MsgType:  "update",
+		Msg:      &pb.LevelMsg{MakerAddress: utils.HexToBytes(data.MakerAddress), Levels: levels},
 	}
 
 	return proto.Marshal(msg)
 }
 
-// flattenPriceLevels 将价格层级数组扁平化为 [price, amount, price, amount, ...] 格式
-func flattenPriceLevels(levels [][2]float64) []float64 {
+// =============================================================================
+// 内部辅助函数
+// =============================================================================
+
+// calculateSpread 根据执行模式和中间价计算价差
+func calculateSpread(mode ExecutionMode, midPrice float64) float64 {
+	if mode == SelfExecuteMode {
+		return selfExecuteSpread
+	}
+	// Gasless 模式：基础价差 + gas 影响
+	if midPrice > 0 {
+		return gaslessSpread + gasEstimateUSD/midPrice
+	}
+	return gaslessSpread
+}
+
+// buildPairLevel 构建交易对价格层级
+// 默认生成 3 层深度：0.2, 0.3, 0.4 个基础代币
+func buildPairLevel(baseAddr string, baseDec uint32, quoteAddr string, quoteDec uint32, midPrice, spread float64) PairLevel {
+	return PairLevel{
+		BaseAddress:   baseAddr,
+		BaseDecimals:  baseDec,
+		QuoteAddress:  quoteAddr,
+		QuoteDecimals: quoteDec,
+		Bids:          generateLevels(midPrice, spread, -1), // 买单：价格递减
+		Asks:          generateLevels(midPrice, spread, +1), // 卖单：价格递增
+	}
+}
+
+// generateLevels 生成价格层级
+// direction: -1 表示买单（价格递减），+1 表示卖单（价格递增）
+func generateLevels(midPrice, spread float64, direction int) [][2]float64 {
+	amounts := [3]float64{0.2, 0.3, 0.4} // 各层数量
+	levels := make([][2]float64, len(amounts))
+
+	for i, amount := range amounts {
+		multiplier := 1 + float64(direction)*spread*float64(i+1)
+		levels[i] = [2]float64{midPrice * multiplier, amount}
+	}
+	return levels
+}
+
+// flattenLevels 将层级数组扁平化为 [price, amount, price, amount, ...]
+func flattenLevels(levels [][2]float64) []float64 {
 	result := make([]float64, 0, len(levels)*2)
-	for _, level := range levels {
-		result = append(result, level[0], level[1]) // price, amount
+	for _, l := range levels {
+		result = append(result, l[0], l[1])
 	}
 	return result
 }

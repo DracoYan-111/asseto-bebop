@@ -5,171 +5,187 @@ import (
 	"strings"
 )
 
-// TokenPrice 存储代币的 USD 价格和精度
+// =============================================================================
+// 常量定义
+// =============================================================================
+
+const (
+	// defaultSpread 默认点差 (0.7%)
+	// Market Maker 通过点差获取利润，RFQ 报价使用与 pricing levels 相同的点差
+	defaultSpread = 0.007
+)
+
+// 预计算的 10 的幂次方缓存，避免重复计算
+var (
+	pow10Cache = make(map[int64]*big.Int)
+)
+
+// =============================================================================
+// 数据结构
+// =============================================================================
+
+// TokenPrice 代币价格信息
 type TokenPrice struct {
-	PriceUSD float64 // 代币的 USD 价格
-	Decimals uint32  // 代币精度
+	PriceUSD float64 // USD 价格
+	Decimals uint32  // 代币精度 (例如: 18 表示 10^18 最小单位 = 1 代币)
 }
 
-// priceMap 存储所有代币的价格信息
-// 注意：地址需要小写以便比较
+// =============================================================================
+// 价格映射表
+// =============================================================================
+
+// priceMap 代币价格映射表 (地址小写 -> 价格信息)
 var priceMap = map[string]TokenPrice{
-	// WBNB - 价格约 879 USD
-	strings.ToLower(wbnbAddress): {
-		PriceUSD: wbnbUsdtMid,
-		Decimals: wbnbDecimals,
-	},
-	// USDC - 稳定币，价格 1 USD
-	strings.ToLower(usdcAddress): {
-		PriceUSD: 1.0,
-		Decimals: usdcDecimals,
-	},
-	// USDT - 稳定币，价格 1 USD
-	strings.ToLower(usdtAddress): {
-		PriceUSD: 1.0,
-		Decimals: usdtDecimals,
-	},
-	// CASH+ - 价格约 106.71 USD
-	strings.ToLower(cashPlusAddress): {
-		PriceUSD: cashPlusUsdtMid,
-		Decimals: cashPlusDecimals,
-	},
+	strings.ToLower(wbnbAddress):     {PriceUSD: wbnbUsdtMid, Decimals: wbnbDecimals},
+	strings.ToLower(usdcAddress):     {PriceUSD: 1.0, Decimals: usdcDecimals},
+	strings.ToLower(usdtAddress):     {PriceUSD: 1.0, Decimals: usdtDecimals},
+	strings.ToLower(cashPlusAddress): {PriceUSD: cashPlusUsdtMid, Decimals: cashPlusDecimals},
 }
 
-// GetTokenPrice 获取代币价格信息
+// =============================================================================
+// 公共函数
+// =============================================================================
+
+// GetTokenPrice 根据代币地址获取价格信息
 func GetTokenPrice(tokenAddress string) (TokenPrice, bool) {
 	price, ok := priceMap[strings.ToLower(tokenAddress)]
 	return price, ok
 }
 
-// CalculateMakerAmount 根据 TakerAmount 计算 MakerAmount
-// 例如：用 1 WETH 换 USDC，价格是 1 ETH = 4000 USDC
-// taker_amount = 1 WETH (with decimals), maker_amount = 4000 USDC (with decimals)
+// CalculateMakerAmount 根据 TakerAmount 计算 MakerAmount (卖出 taker 换取 maker)
 //
-// 公式：maker_amount = taker_amount * (taker_price / maker_price) * (1 - spread)
-// 例如：1 WBNB -> USDC: maker_amount = 1 * (940.12 / 1.0) * 0.993 = 933.5 USDC
+// 场景: 用户卖出 takerAmount 的 takerToken，获得多少 makerToken
+// 公式: makerAmount = takerAmount × (takerPrice / makerPrice) × (1 - spread)
+//
+// 示例: 1 WBNB → USDC (价格 879 USDC/WBNB, 点差 0.7%)
+//
+//	makerAmount = 1 × (879 / 1) × 0.993 = 872.847 USDC
 func CalculateMakerAmount(takerToken, makerToken string, takerAmount *big.Int) *big.Int {
 	takerPrice, takerOk := GetTokenPrice(takerToken)
 	makerPrice, makerOk := GetTokenPrice(makerToken)
 
 	if !takerOk || !makerOk {
-		// 如果找不到价格，返回一个安全的默认值
-		return new(big.Int).Set(takerAmount)
+		return new(big.Int).Set(takerAmount) // 价格未知时返回原值
 	}
 
-	// 点差：Market Maker 需要一些利润
-	// 对于 RFQ 报价，使用与 pricing levels 相同的点差
-	spread := 0.007 // 0.7% 点差（比 levels 稍高以确保安全）
+	// 计算: takerAmount × (takerPrice / makerPrice) × (1 - spread)
+	priceRatio := takerPrice.PriceUSD / makerPrice.PriceUSD
+	spreadFactor := 1 - defaultSpread
 
-	// 使用 big.Float 进行精确计算
-	// maker_amount = taker_amount * (taker_price / maker_price) * (1 - spread)
-	takerAmountFloat := new(big.Float).SetInt(takerAmount)
-	priceRatio := new(big.Float).SetFloat64(takerPrice.PriceUSD / makerPrice.PriceUSD)
-	spreadFactor := new(big.Float).SetFloat64(1 - spread)
+	result := new(big.Float).SetInt(takerAmount)
+	result.Mul(result, big.NewFloat(priceRatio*spreadFactor))
 
-	// 计算结果
-	makerAmountFloat := new(big.Float).Mul(takerAmountFloat, priceRatio)
-	makerAmountFloat.Mul(makerAmountFloat, spreadFactor)
+	// 调整精度差异
+	adjustDecimals(result, makerPrice.Decimals, takerPrice.Decimals)
 
-	// 处理精度差异
-	// 如果 taker decimals != maker decimals，需要调整
-	if takerPrice.Decimals != makerPrice.Decimals {
-		decimalDiff := int64(makerPrice.Decimals) - int64(takerPrice.Decimals)
-		if decimalDiff > 0 {
-			// maker 精度更高，需要乘以 10^diff
-			multiplier := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(decimalDiff), nil))
-			makerAmountFloat.Mul(makerAmountFloat, multiplier)
-		} else if decimalDiff < 0 {
-			// maker 精度更低，需要除以 10^(-diff)
-			divisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(-decimalDiff), nil))
-			makerAmountFloat.Quo(makerAmountFloat, divisor)
-		}
-	}
-
-	// 转换为 big.Int（向下取整）
-	makerAmount, _ := makerAmountFloat.Int(nil)
-	return makerAmount
+	amount, _ := result.Int(nil)
+	return amount
 }
 
-// CalculateTakerAmount 根据 MakerAmount 计算 TakerAmount
-// 例如：用 ? WBNB 换 20 USDC，价格是 1 WBNB = 940.12 USDC
-// maker_amount = 20 USDC, taker_amount = 20 / 940.12 = 0.02127 WBNB
+// CalculateTakerAmount 根据 MakerAmount 计算 TakerAmount (需要多少 taker 换取 maker)
 //
-// 公式：taker_amount = maker_amount * (maker_price / taker_price) * (1 + spread)
+// 场景: 用户想获得 makerAmount 的 makerToken，需要卖出多少 takerToken
+// 公式: takerAmount = makerAmount × (makerPrice / takerPrice) × (1 + spread)
+//
+// 示例: ? WBNB → 20 USDC (价格 879 USDC/WBNB, 点差 0.7%)
+//
+//	takerAmount = 20 × (1 / 879) × 1.007 = 0.0229 WBNB
 func CalculateTakerAmount(takerToken, makerToken string, makerAmount *big.Int) *big.Int {
 	takerPrice, takerOk := GetTokenPrice(takerToken)
 	makerPrice, makerOk := GetTokenPrice(makerToken)
 
 	if !takerOk || !makerOk {
-		// 如果找不到价格，返回一个安全的默认值
-		return new(big.Int).Set(makerAmount)
+		return new(big.Int).Set(makerAmount) // 价格未知时返回原值
 	}
 
-	// 点差：Market Maker 需要一些利润
-	// 当计算 taker 需要支付多少时，要多收一点
-	spread := 0.007 // 0.7% 点差
+	// 计算: makerAmount × (makerPrice / takerPrice) × (1 + spread)
+	priceRatio := makerPrice.PriceUSD / takerPrice.PriceUSD
+	spreadFactor := 1 + defaultSpread
 
-	// 使用 big.Float 进行精确计算
-	// taker_amount = maker_amount * (maker_price / taker_price) * (1 + spread)
-	makerAmountFloat := new(big.Float).SetInt(makerAmount)
-	priceRatio := new(big.Float).SetFloat64(makerPrice.PriceUSD / takerPrice.PriceUSD)
-	spreadFactor := new(big.Float).SetFloat64(1 + spread)
+	result := new(big.Float).SetInt(makerAmount)
+	result.Mul(result, big.NewFloat(priceRatio*spreadFactor))
 
-	// 计算结果
-	takerAmountFloat := new(big.Float).Mul(makerAmountFloat, priceRatio)
-	takerAmountFloat.Mul(takerAmountFloat, spreadFactor)
+	// 调整精度差异
+	adjustDecimals(result, takerPrice.Decimals, makerPrice.Decimals)
 
-	// 处理精度差异
-	if takerPrice.Decimals != makerPrice.Decimals {
-		decimalDiff := int64(takerPrice.Decimals) - int64(makerPrice.Decimals)
-		if decimalDiff > 0 {
-			multiplier := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(decimalDiff), nil))
-			takerAmountFloat.Mul(takerAmountFloat, multiplier)
-		} else if decimalDiff < 0 {
-			divisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(-decimalDiff), nil))
-			takerAmountFloat.Quo(takerAmountFloat, divisor)
-		}
-	}
-
-	// 转换为 big.Int（向上取整，对 maker 有利）
-	takerAmount, _ := takerAmountFloat.Int(nil)
-	return takerAmount
+	amount, _ := result.Int(nil)
+	return amount
 }
 
-// ConvertNativeFeeToToken 将原生代币（BNB）费用转换为指定代币的数量
-// feeNative: BNB 数量（浮点数）
-// tokenAddress: 目标代币地址
-// 返回: 目标代币数量（带精度）
+// ConvertNativeFeeToToken 将原生代币 (BNB) 费用转换为目标代币数量
+//
+// 参数:
+//   - feeNative: BNB 费用数量 (浮点数，例如 0.017 表示 0.017 BNB)
+//   - tokenAddress: 目标代币地址
+//
+// 返回: 目标代币数量 (带精度的 big.Int)
+//
+// 示例: 0.017 BNB → USDC (BNB 价格 $879)
+//
+//	feeUSD = 0.017 × 879 = $14.94
+//	tokenAmount = 14.94 / 1.0 = 14.94 USDC
+//	返回值 = 14.94 × 10^18 = 14940000000000000000
 func ConvertNativeFeeToToken(feeNative float64, tokenAddress string) *big.Int {
 	if feeNative <= 0 {
 		return big.NewInt(0)
 	}
 
-	// 获取 BNB 价格（即 WBNB 价格）
+	// 获取 BNB 和目标代币价格
 	bnbPrice, bnbOk := GetTokenPrice(wbnbAddress)
-	if !bnbOk {
-		return big.NewInt(0)
-	}
-
-	// 计算费用的 USD 价值
-	feeUSD := feeNative * bnbPrice.PriceUSD
-
-	// 获取目标代币价格
 	tokenPrice, tokenOk := GetTokenPrice(tokenAddress)
-	if !tokenOk {
+	if !bnbOk || !tokenOk {
 		return big.NewInt(0)
 	}
 
-	// 计算目标代币数量: feeUSD / tokenPriceUSD
-	tokenAmount := feeUSD / tokenPrice.PriceUSD
+	// 计算: (feeNative × bnbPrice / tokenPrice) × 10^decimals
+	tokenAmount := (feeNative * bnbPrice.PriceUSD) / tokenPrice.PriceUSD
 
-	// 应用精度（乘以 10^decimals）
-	decimalMultiplier := new(big.Float).SetInt(
-		new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tokenPrice.Decimals)), nil),
-	)
-	tokenAmountFloat := new(big.Float).SetFloat64(tokenAmount)
-	tokenAmountFloat.Mul(tokenAmountFloat, decimalMultiplier)
+	result := new(big.Float).SetFloat64(tokenAmount)
+	result.Mul(result, new(big.Float).SetInt(getPow10(int64(tokenPrice.Decimals))))
 
-	result, _ := tokenAmountFloat.Int(nil)
+	amount, _ := result.Int(nil)
+	return amount
+}
+
+// =============================================================================
+// 内部辅助函数
+// =============================================================================
+
+// adjustDecimals 调整精度差异
+// targetDecimals: 目标代币精度
+// sourceDecimals: 源代币精度
+func adjustDecimals(value *big.Float, targetDecimals, sourceDecimals uint32) {
+	if targetDecimals == sourceDecimals {
+		return
+	}
+
+	diff := int64(targetDecimals) - int64(sourceDecimals)
+	factor := new(big.Float).SetInt(getPow10(abs(diff)))
+
+	if diff > 0 {
+		value.Mul(value, factor) // 目标精度更高，乘以 10^diff
+	} else {
+		value.Quo(value, factor) // 目标精度更低，除以 10^|diff|
+	}
+}
+
+// getPow10 获取 10^n (带缓存)
+func getPow10(n int64) *big.Int {
+	if n < 0 {
+		n = -n
+	}
+	if cached, ok := pow10Cache[n]; ok {
+		return cached
+	}
+	result := new(big.Int).Exp(big.NewInt(10), big.NewInt(n), nil)
+	pow10Cache[n] = result
 	return result
+}
+
+// abs 返回 int64 的绝对值
+func abs(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
