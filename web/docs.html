@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+        h1 { font-size: 2rem; margin-bottom: 10px; color: #f1f5f9; }
+        .subtitle { color: #64748b; margin-bottom: 40px; }
+        h2 { font-size: 1.3rem; margin: 40px 0 20px; color: #f1f5f9; padding-bottom: 10px; border-bottom: 1px solid #334155; }
+        h3 { font-size: 1.1rem; margin: 25px 0 15px; color: #e2e8f0; }
+        .endpoint { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .endpoint-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+        .method { padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        .method-get { background: #22c55e; color: white; }
+        .method-post { background: #eab308; color: black; }
+        .path { font-family: monospace; font-size: 1rem; color: #f1f5f9; }
+        .auth-badge { font-size: 0.7rem; padding: 3px 8px; background: #ef444420; color: #ef4444; border-radius: 4px; margin-left: auto; }
+        .auth-badge.none { background: #22c55e20; color: #22c55e; }
+        .desc { color: #94a3b8; margin-bottom: 15px; }
+        .code-block { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 15px; font-family: monospace; font-size: 0.85rem; overflow-x: auto; white-space: pre; margin: 10px 0; }
+        .param-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        .param-table th, .param-table td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        .param-table th { color: #64748b; font-weight: 500; font-size: 0.8rem; text-transform: uppercase; }
+        .param-table td { font-size: 0.9rem; }
+        .param-table code { background: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
+        .type { color: #3b82f6; }
+        .required { color: #ef4444; font-size: 0.75rem; }
+        .optional { color: #64748b; font-size: 0.75rem; }
+        a { color: #3b82f6; }
+        .nav-link { display: inline-block; margin-bottom: 30px; color: #3b82f6; text-decoration: none; }
+        .nav-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="nav-link">← 返回 Dashboard</a>
+
+        <h1>Price API Documentation</h1>
+        <p class="subtitle">价格管理接口文档</p>
+
+        <h2>认证</h2>
+        <p style="color: #94a3b8; margin-bottom: 15px;">需要认证的接口必须在请求头中包含 API Key：</p>
+        <div class="code-block">X-API-Key: your-api-key</div>
+
+        <h2>接口列表</h2>
+
+        <!-- Health -->
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method method-get">GET</span>
+                <span class="path">/health</span>
+                <span class="auth-badge none">无需认证</span>
+            </div>
+            <p class="desc">健康检查接口，返回服务状态和当前价格数量。</p>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+  "status": "ok",
+  "prices": 5
+}</div>
+        </div>
+
+        <!-- Get Prices -->
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method method-get">GET</span>
+                <span class="path">/api/prices</span>
+                <span class="auth-badge">需要认证</span>
+            </div>
+            <p class="desc">获取所有已存储的价格数据。</p>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+  "count": 2,
+  "prices": [
+    {
+      "base_token": "0x...",
+      "quote_token": "0x...",
+      "base_decimals": 18,
+      "quote_decimals": 6,
+      "bids": [[1.0, 100], [0.99, 200]],
+      "asks": [[1.01, 100], [1.02, 200]]
+    }
+  ]
+}</div>
+        </div>
+
+        <!-- Get History -->
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method method-get">GET</span>
+                <span class="path">/api/price/history</span>
+                <span class="auth-badge">需要认证</span>
+            </div>
+            <p class="desc">获取价格更新历史记录。</p>
+
+            <h3>查询参数</h3>
+            <table class="param-table">
+                <tr>
+                    <th>参数</th>
+                    <th>类型</th>
+                    <th>说明</th>
+                </tr>
+                <tr>
+                    <td><code>limit</code></td>
+                    <td><span class="type">integer</span> <span class="optional">可选</span></td>
+                    <td>返回记录数量，默认 100</td>
+                </tr>
+            </table>
+
+            <h3>请求示例</h3>
+            <div class="code-block">GET /api/price/history?limit=50</div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+  "count": 50,
+  "history": [...]
+}</div>
+        </div>
+
+        <!-- Update Price -->
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method method-post">POST</span>
+                <span class="path">/api/price</span>
+                <span class="auth-badge">需要认证</span>
+            </div>
+            <p class="desc">批量更新价格数据。</p>
+
+            <h3>请求体参数</h3>
+            <table class="param-table">
+                <tr>
+                    <th>参数</th>
+                    <th>类型</th>
+                    <th>说明</th>
+                </tr>
+                <tr>
+                    <td><code>levels</code></td>
+                    <td><span class="type">array</span> <span class="required">必填</span></td>
+                    <td>价格层级数组</td>
+                </tr>
+                <tr>
+                    <td><code>operator</code></td>
+                    <td><span class="type">string</span> <span class="optional">可选</span></td>
+                    <td>操作者标识</td>
+                </tr>
+            </table>
+
+            <h3>Level 对象结构</h3>
+            <table class="param-table">
+                <tr>
+                    <th>字段</th>
+                    <th>类型</th>
+                    <th>说明</th>
+                </tr>
+                <tr>
+                    <td><code>base_token</code></td>
+                    <td><span class="type">string</span> <span class="required">必填</span></td>
+                    <td>基础代币地址</td>
+                </tr>
+                <tr>
+                    <td><code>quote_token</code></td>
+                    <td><span class="type">string</span> <span class="required">必填</span></td>
+                    <td>报价代币地址</td>
+                </tr>
+                <tr>
+                    <td><code>base_decimals</code></td>
+                    <td><span class="type">integer</span> <span class="required">必填</span></td>
+                    <td>基础代币精度</td>
+                </tr>
+                <tr>
+                    <td><code>quote_decimals</code></td>
+                    <td><span class="type">integer</span> <span class="required">必填</span></td>
+                    <td>报价代币精度</td>
+                </tr>
+                <tr>
+                    <td><code>bids</code></td>
+                    <td><span class="type">array</span> <span class="required">必填</span></td>
+                    <td>买单 [[价格, 数量], ...]</td>
+                </tr>
+                <tr>
+                    <td><code>asks</code></td>
+                    <td><span class="type">array</span> <span class="required">必填</span></td>
+                    <td>卖单 [[价格, 数量], ...]</td>
+                </tr>
+            </table>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+  "operator": "admin",
+  "levels": [
+    {
+      "base_token": "0x1234...abcd",
+      "quote_token": "0x5678...efgh",
+      "base_decimals": 18,
+      "quote_decimals": 6,
+      "bids": [[1.0, 100], [0.99, 200], [0.98, 300]],
+      "asks": [[1.01, 100], [1.02, 200], [1.03, 300]]
+    }
+  ]
+}</div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+  "success": true,
+  "count": 1,
+  "levels": [...]
+}</div>
+
+            <h3>错误响应</h3>
+            <div class="code-block">// 401 Unauthorized
+{"error": "Unauthorized"}
+
+// 400 Bad Request
+{"error": "levels array is required"}
+{"error": "level 0: base_token and quote_token are required"}
+{"error": "level 0: invalid bid at index 0: price and amount must be positive"}</div>
+        </div>
+
+        <h2>cURL 示例</h2>
+
+        <h3>健康检查</h3>
+        <div class="code-block">curl http://localhost:8080/health</div>
+
+        <h3>获取价格</h3>
+        <div class="code-block">curl -H "X-API-Key: your-key" http://localhost:8080/api/prices</div>
+
+        <h3>获取历史</h3>
+        <div class="code-block">curl -H "X-API-Key: your-key" "http://localhost:8080/api/price/history?limit=50"</div>
+
+        <h3>更新价格</h3>
+        <div class="code-block">curl -X POST http://localhost:8080/api/price \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{
+    "operator": "admin",
+    "levels": [{
+      "base_token": "0x1234",
+      "quote_token": "0x5678",
+      "base_decimals": 18,
+      "quote_decimals": 6,
+      "bids": [[1.0, 100]],
+      "asks": [[1.01, 100]]
+    }]
+  }'</div>
+    </div>
+</body>
+</html>

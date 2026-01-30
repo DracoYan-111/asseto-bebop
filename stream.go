@@ -53,6 +53,13 @@ func runPricingSender(ctx context.Context, conn *websocket.Conn, errChan chan er
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// 检查是否有配置价格
+			prices := globalPriceStore.GetAllPrices()
+			if len(prices) == 0 {
+				log.Println("⏸️  跳过定价发送: 未配置任何价格，请先通过 API 上传价格")
+				continue
+			}
+
 			pricing := CreateSamplePricing()
 			data, err := BuildPricingMessage(pricing)
 			if err != nil {

@@ -1,0 +1,150 @@
+[
+  {
+    "base_token": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "quote_token": "0x55d398326f99059fF775485246999027B3197955",
+    "base_decimals": 18,
+    "quote_decimals": 18,
+    "bids": [
+      [
+        845.39,
+        0.2
+      ],
+      [
+        843.39,
+        0.3
+      ],
+      [
+        840.39,
+        0.4
+      ]
+    ],
+    "asks": [
+      [
+        840.39,
+        0.2
+      ],
+      [
+        843.39,
+        0.3
+      ],
+      [
+        845.39,
+        0.4
+      ]
+    ],
+    "updated_at": 1769769915,
+    "operator": "admin",
+    "timestamp": 1769769915
+  },
+  {
+    "base_token": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "quote_token": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "base_decimals": 18,
+    "quote_decimals": 18,
+    "bids": [
+      [
+        845.39,
+        0.2
+      ],
+      [
+        843.39,
+        0.3
+      ],
+      [
+        840.39,
+        0.4
+      ]
+    ],
+    "asks": [
+      [
+        840.39,
+        0.2
+      ],
+      [
+        843.39,
+        0.3
+      ],
+      [
+        845.39,
+        0.4
+      ]
+    ],
+    "updated_at": 1769769915,
+    "operator": "admin",
+    "timestamp": 1769769915
+  },
+  {
+    "base_token": "0x1775504c5873e179Ea2f8ABFcE3861EC74D159bc",
+    "quote_token": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "base_decimals": 18,
+    "quote_decimals": 18,
+    "bids": [
+      [
+        106.7,
+        0.1
+      ],
+      [
+        106.34,
+        0.2
+      ],
+      [
+        106.01,
+        0.3
+      ]
+    ],
+    "asks": [
+      [
+        106.01,
+        0.1
+      ],
+      [
+        106.34,
+        0.2
+      ],
+      [
+        106.7,
+        0.3
+      ]
+    ],
+    "updated_at": 1769769915,
+    "operator": "admin",
+    "timestamp": 1769769915
+  },
+  {
+    "base_token": "0x1775504c5873e179Ea2f8ABFcE3861EC74D159bc",
+    "quote_token": "0x55d398326f99059fF775485246999027B3197955",
+    "base_decimals": 18,
+    "quote_decimals": 18,
+    "bids": [
+      [
+        106.7,
+        0.1
+      ],
+      [
+        106.34,
+        0.2
+      ],
+      [
+        106.01,
+        0.3
+      ]
+    ],
+    "asks": [
+      [
+        106.01,
+        0.1
+      ],
+      [
+        106.34,
+        0.2
+      ],
+      [
+        106.7,
+        0.3
+      ]
+    ],
+    "updated_at": 1769769915,
+    "operator": "admin",
+    "timestamp": 1769769915
+  }
+]

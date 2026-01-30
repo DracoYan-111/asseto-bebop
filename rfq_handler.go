@@ -304,8 +304,9 @@ func calculateRefPrice(quote *Quote, takerToken, makerToken string, takerAmt, ma
 }
 
 // subtractFee 从金额中扣除费用
+// 使用 useBidPrice=true，让扣除的费用更大（对 MM 有利）
 func subtractFee(amount *big.Int, feeNative float64, tokenAddr string) *big.Int {
-	fee := ConvertNativeFeeToToken(feeNative, tokenAddr)
+	fee := ConvertNativeFeeToToken(feeNative, tokenAddr, true)
 	if amount.Cmp(fee) > 0 {
 		return new(big.Int).Sub(amount, fee)
 	}
@@ -313,8 +314,9 @@ func subtractFee(amount *big.Int, feeNative float64, tokenAddr string) *big.Int 
 }
 
 // addFee 向金额添加费用
+// 使用 useBidPrice=false，让添加的费用更小（对用户稍有利）
 func addFee(amount *big.Int, feeNative float64, tokenAddr string) *big.Int {
-	fee := ConvertNativeFeeToToken(feeNative, tokenAddr)
+	fee := ConvertNativeFeeToToken(feeNative, tokenAddr, false)
 	return new(big.Int).Add(amount, fee)
 }
 

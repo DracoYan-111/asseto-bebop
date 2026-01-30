@@ -6,14 +6,8 @@ import (
 )
 
 // =============================================================================
-// 常量定义
+// 价格计算模块 - 使用动态 Bid/Ask 价格
 // =============================================================================
-
-const (
-	// defaultSpread 默认点差 (0.7%)
-	// Market Maker 通过点差获取利润，RFQ 报价使用与 pricing levels 相同的点差
-	defaultSpread = 0.007
-)
 
 // 预计算的 10 的幂次方缓存，避免重复计算
 var (
@@ -21,62 +15,40 @@ var (
 )
 
 // =============================================================================
-// 数据结构
-// =============================================================================
-
-// TokenPrice 代币价格信息
-type TokenPrice struct {
-	PriceUSD float64 // USD 价格
-	Decimals uint32  // 代币精度 (例如: 18 表示 10^18 最小单位 = 1 代币)
-}
-
-// =============================================================================
-// 价格映射表
-// =============================================================================
-
-// priceMap 代币价格映射表 (地址小写 -> 价格信息)
-var priceMap = map[string]TokenPrice{
-	strings.ToLower(wbnbAddress):     {PriceUSD: wbnbUsdtMid, Decimals: wbnbDecimals},
-	strings.ToLower(usdcAddress):     {PriceUSD: 1.0, Decimals: usdcDecimals},
-	strings.ToLower(usdtAddress):     {PriceUSD: 1.0, Decimals: usdtDecimals},
-	strings.ToLower(cashPlusAddress): {PriceUSD: cashPlusUsdtMid, Decimals: cashPlusDecimals},
-}
-
-// =============================================================================
 // 公共函数
 // =============================================================================
-
-// GetTokenPrice 根据代币地址获取价格信息
-func GetTokenPrice(tokenAddress string) (TokenPrice, bool) {
-	price, ok := priceMap[strings.ToLower(tokenAddress)]
-	return price, ok
-}
 
 // CalculateMakerAmount 根据 TakerAmount 计算 MakerAmount (卖出 taker 换取 maker)
 //
 // 场景: 用户卖出 takerAmount 的 takerToken，获得多少 makerToken
-// 公式: makerAmount = takerAmount × (takerPrice / makerPrice) × (1 - spread)
+// 使用运营设定的 Bid 价格（你买入 taker 的价格）
 //
-// 示例: 1 WBNB → USDC (价格 879 USDC/WBNB, 点差 0.7%)
-//
-//	makerAmount = 1 × (879 / 1) × 0.993 = 872.847 USDC
+// 示例: 用户卖 1 WBNB → 获得 USDT
+// - WBNB/USDT 交易对 Bid = 870 (你愿意以 870 USDT 买入 1 WBNB)
+// - makerAmount = 1 × 870 = 870 USDT
 func CalculateMakerAmount(takerToken, makerToken string, takerAmount *big.Int) *big.Int {
-	takerPrice, takerOk := GetTokenPrice(takerToken)
-	makerPrice, makerOk := GetTokenPrice(makerToken)
-
-	if !takerOk || !makerOk {
-		return new(big.Int).Set(takerAmount) // 价格未知时返回原值
+	// 尝试获取 taker/quote 的报价（taker 是 base）
+	price, ok := globalPriceStore.GetBidPrice(takerToken, makerToken)
+	if !ok {
+		// 尝试反向：maker/taker 的报价（maker 是 base）
+		// 用户卖 taker 买 maker = 你卖 maker，使用 Ask 价格的倒数
+		askPrice, askOk := globalPriceStore.GetAskPrice(makerToken, takerToken)
+		if !askOk {
+			// 价格未知，返回原值（兜底）
+			return new(big.Int).Set(takerAmount)
+		}
+		// price = 1 / askPrice (反向计算)
+		price = 1.0 / askPrice
 	}
 
-	// 计算: takerAmount × (takerPrice / makerPrice) × (1 - spread)
-	priceRatio := takerPrice.PriceUSD / makerPrice.PriceUSD
-	spreadFactor := 1 - defaultSpread
-
+	// 计算: takerAmount × price
 	result := new(big.Float).SetInt(takerAmount)
-	result.Mul(result, big.NewFloat(priceRatio*spreadFactor))
+	result.Mul(result, big.NewFloat(price))
 
 	// 调整精度差异
-	adjustDecimals(result, makerPrice.Decimals, takerPrice.Decimals)
+	takerDecimals := GetTokenDecimals(takerToken)
+	makerDecimals := GetTokenDecimals(makerToken)
+	adjustDecimals(result, makerDecimals, takerDecimals)
 
 	amount, _ := result.Int(nil)
 	return amount
@@ -85,28 +57,35 @@ func CalculateMakerAmount(takerToken, makerToken string, takerAmount *big.Int) *
 // CalculateTakerAmount 根据 MakerAmount 计算 TakerAmount (需要多少 taker 换取 maker)
 //
 // 场景: 用户想获得 makerAmount 的 makerToken，需要卖出多少 takerToken
-// 公式: takerAmount = makerAmount × (makerPrice / takerPrice) × (1 + spread)
+// 使用运营设定的 Ask 价格（你卖出 maker 的价格）
 //
-// 示例: ? WBNB → 20 USDC (价格 879 USDC/WBNB, 点差 0.7%)
-//
-//	takerAmount = 20 × (1 / 879) × 1.007 = 0.0229 WBNB
+// 示例: 用户想获得 1000 USDT → 需付多少 WBNB?
+// - WBNB/USDT 交易对 Ask = 888 (你愿意以 888 USDT 卖出 1 WBNB)
+// - takerAmount = 1000 / 888 = 1.126 WBNB
 func CalculateTakerAmount(takerToken, makerToken string, makerAmount *big.Int) *big.Int {
-	takerPrice, takerOk := GetTokenPrice(takerToken)
-	makerPrice, makerOk := GetTokenPrice(makerToken)
-
-	if !takerOk || !makerOk {
-		return new(big.Int).Set(makerAmount) // 价格未知时返回原值
+	// 尝试获取 taker/quote 的报价（taker 是 base）
+	// 用户买 maker 卖 taker = 你买 taker 卖 maker
+	price, ok := globalPriceStore.GetAskPrice(takerToken, makerToken)
+	if !ok {
+		// 尝试反向：maker/taker 的报价（maker 是 base）
+		// 用户买 maker = MM 卖 maker = 使用 Ask 价格的倒数
+		askPrice, askOk := globalPriceStore.GetAskPrice(makerToken, takerToken)
+		if !askOk {
+			// 价格未知，返回原值（兜底）
+			return new(big.Int).Set(makerAmount)
+		}
+		// price = 1 / askPrice (反向计算)
+		price = 1.0 / askPrice
 	}
 
-	// 计算: makerAmount × (makerPrice / takerPrice) × (1 + spread)
-	priceRatio := makerPrice.PriceUSD / takerPrice.PriceUSD
-	spreadFactor := 1 + defaultSpread
-
+	// 计算: makerAmount / price
 	result := new(big.Float).SetInt(makerAmount)
-	result.Mul(result, big.NewFloat(priceRatio*spreadFactor))
+	result.Quo(result, big.NewFloat(price))
 
 	// 调整精度差异
-	adjustDecimals(result, takerPrice.Decimals, makerPrice.Decimals)
+	takerDecimals := GetTokenDecimals(takerToken)
+	makerDecimals := GetTokenDecimals(makerToken)
+	adjustDecimals(result, takerDecimals, makerDecimals)
 
 	amount, _ := result.Int(nil)
 	return amount
@@ -114,34 +93,88 @@ func CalculateTakerAmount(takerToken, makerToken string, makerAmount *big.Int) *
 
 // ConvertNativeFeeToToken 将原生代币 (BNB) 费用转换为目标代币数量
 //
+// 使用 USD (USDT) 作为中间货币进行转换：BNB → USD → 目标代币
+//
 // 参数:
 //   - feeNative: BNB 费用数量 (浮点数，例如 0.017 表示 0.017 BNB)
 //   - tokenAddress: 目标代币地址
+//   - useBidPrice: 是否使用 Bid 价格（true=用于扣除费用，false=用于添加费用）
+//
+// 价格选择逻辑:
+//   - useBidPrice=true: 使用 Bid 价格（更高），扣除更多费用 → 对 MM 有利
+//   - useBidPrice=false: 使用 Ask 价格（更低），添加更少费用 → 对用户稍有利
 //
 // 返回: 目标代币数量 (带精度的 big.Int)
-//
-// 示例: 0.017 BNB → USDC (BNB 价格 $879)
-//
-//	feeUSD = 0.017 × 879 = $14.94
-//	tokenAmount = 14.94 / 1.0 = 14.94 USDC
-//	返回值 = 14.94 × 10^18 = 14940000000000000000
-func ConvertNativeFeeToToken(feeNative float64, tokenAddress string) *big.Int {
+func ConvertNativeFeeToToken(feeNative float64, tokenAddress string, useBidPrice bool) *big.Int {
 	if feeNative <= 0 {
 		return big.NewInt(0)
 	}
 
-	// 获取 BNB 和目标代币价格
-	bnbPrice, bnbOk := GetTokenPrice(wbnbAddress)
-	tokenPrice, tokenOk := GetTokenPrice(tokenAddress)
-	if !bnbOk || !tokenOk {
-		return big.NewInt(0)
+	// 1. 获取 WBNB 的 USD 价格
+	var wbnbUsdPrice float64
+	var ok bool
+
+	if useBidPrice {
+		// 使用 Bid 价格（更高）→ 费用更大
+		wbnbUsdPrice, ok = globalPriceStore.GetBidPrice(wbnbAddress, usdtAddress)
+	} else {
+		// 使用 Ask 价格（更低）→ 费用更小
+		wbnbUsdPrice, ok = globalPriceStore.GetAskPrice(wbnbAddress, usdtAddress)
 	}
 
-	// 计算: (feeNative × bnbPrice / tokenPrice) × 10^decimals
-	tokenAmount := (feeNative * bnbPrice.PriceUSD) / tokenPrice.PriceUSD
+	if !ok {
+		// 备用：尝试反向
+		if bid, bidOk := globalPriceStore.GetBidPrice(usdtAddress, wbnbAddress); bidOk {
+			wbnbUsdPrice = 1.0 / bid
+		} else if ask, askOk := globalPriceStore.GetAskPrice(usdtAddress, wbnbAddress); askOk {
+			wbnbUsdPrice = 1.0 / ask
+		} else {
+			return big.NewInt(0)
+		}
+	}
 
+	// 2. 计算费用的 USD 价值
+	feeUSD := feeNative * wbnbUsdPrice
+
+	// 3. 获取目标代币的 USD 价格
+	var tokenUsdPrice float64
+	normalizedAddr := strings.ToLower(tokenAddress)
+
+	// 稳定币特殊处理：USDT/USDC 的 USD 价格为 1.0
+	if normalizedAddr == strings.ToLower(usdtAddress) || normalizedAddr == strings.ToLower(usdcAddress) {
+		tokenUsdPrice = 1.0
+	} else if useBidPrice {
+		// 使用 Bid 价格（更高）→ 转换后代币数量更少 → 对 MM 有利（扣除更少代币？）
+		// 实际上：fee = feeUSD / tokenPrice，价格越高，代币数量越少
+		// 对于 subtractFee，我们希望扣除更多代币，所以应该用更低的价格
+		// 修正：subtractFee 应该用 Ask 价格（更低）让 fee 代币数量更大
+		if tokenUsdAsk, ok := globalPriceStore.GetAskPrice(tokenAddress, usdtAddress); ok {
+			tokenUsdPrice = tokenUsdAsk
+		} else if tokenUsdAsk, ok := globalPriceStore.GetAskPrice(tokenAddress, usdcAddress); ok {
+			tokenUsdPrice = tokenUsdAsk
+		} else if tokenUsdBid, ok := globalPriceStore.GetBidPrice(tokenAddress, usdtAddress); ok {
+			tokenUsdPrice = tokenUsdBid
+		} else {
+			return big.NewInt(0)
+		}
+	} else {
+		// 使用 Bid 价格（更高）→ 转换后代币数量更少 → 对用户有利（少付）
+		if tokenUsdBid, ok := globalPriceStore.GetBidPrice(tokenAddress, usdtAddress); ok {
+			tokenUsdPrice = tokenUsdBid
+		} else if tokenUsdBid, ok := globalPriceStore.GetBidPrice(tokenAddress, usdcAddress); ok {
+			tokenUsdPrice = tokenUsdBid
+		} else {
+			return big.NewInt(0)
+		}
+	}
+
+	// 4. 计算目标代币数量: feeUSD / tokenPriceUSD
+	tokenAmount := feeUSD / tokenUsdPrice
+
+	// 5. 应用代币精度
+	tokenDecimals := GetTokenDecimals(tokenAddress)
 	result := new(big.Float).SetFloat64(tokenAmount)
-	result.Mul(result, new(big.Float).SetInt(getPow10(int64(tokenPrice.Decimals))))
+	result.Mul(result, new(big.Float).SetInt(getPow10(int64(tokenDecimals))))
 
 	amount, _ := result.Int(nil)
 	return amount
@@ -188,4 +221,41 @@ func abs(n int64) int64 {
 		return -n
 	}
 	return n
+}
+
+// =============================================================================
+// 兼容性函数（保持原有接口）
+// =============================================================================
+
+// TokenPrice 代币价格信息（兼容旧接口）
+type TokenPrice struct {
+	PriceUSD float64
+	Decimals uint32
+}
+
+// GetTokenPrice 根据代币地址获取价格信息（兼容旧接口）
+// 注意：此函数返回的是对 USDT 的中间价（Bid+Ask 的平均值）
+func GetTokenPrice(tokenAddress string) (TokenPrice, bool) {
+	addr := strings.ToLower(tokenAddress)
+
+	// 稳定币直接返回 1.0
+	if addr == strings.ToLower(usdtAddress) || addr == strings.ToLower(usdcAddress) {
+		return TokenPrice{PriceUSD: 1.0, Decimals: GetTokenDecimals(tokenAddress)}, true
+	}
+
+	// 尝试获取对 USDT 的价格
+	price, ok := globalPriceStore.GetPrice(tokenAddress, usdtAddress)
+	if ok && len(price.Bids) > 0 && len(price.Asks) > 0 {
+		midPrice := (price.Bids[0][0] + price.Asks[0][0]) / 2
+		return TokenPrice{PriceUSD: midPrice, Decimals: GetTokenDecimals(tokenAddress)}, true
+	}
+
+	// 尝试获取对 USDC 的价格
+	price, ok = globalPriceStore.GetPrice(tokenAddress, usdcAddress)
+	if ok && len(price.Bids) > 0 && len(price.Asks) > 0 {
+		midPrice := (price.Bids[0][0] + price.Asks[0][0]) / 2
+		return TokenPrice{PriceUSD: midPrice, Decimals: GetTokenDecimals(tokenAddress)}, true
+	}
+
+	return TokenPrice{}, false
 }

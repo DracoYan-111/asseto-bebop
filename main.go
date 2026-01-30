@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
 )
 
 // =============================================================================
@@ -20,18 +22,40 @@ import (
 // =============================================================================
 
 func main() {
-	cfg := Config{
-		ChainID:       56,
-		PrivateKey:    "0xe1c494380f48f3792d098ccd0276ba98803545fa796a2fbd4ecbcd890822fda5",
-		MarketMaker:   "asseto-rfqt-test",
-		Authorization: "24b95b00-bcaa-4cc4-834a-9dfa7e8c0571",
-		SelfExecution: true,
-		PriceSpread:   0.005,
+	// 加载 .env 文件
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️ 未找到 .env 文件，使用系统环境变量")
+	}
+
+	cfg := loadConfigFromEnv()
+
+	// 验证必要配置
+	if cfg.PrivateKey == "" {
+		log.Fatal("✗ 错误: PRIVATE_KEY 未配置")
+	}
+	if cfg.MarketMaker == "" {
+		log.Fatal("✗ 错误: MARKET_MAKER 未配置")
+	}
+	if cfg.Authorization == "" {
+		log.Fatal("✗ 错误: AUTHORIZATION 未配置")
 	}
 
 	log.Println("========================================")
 	log.Printf("🚀 Bebop Market Maker 启动 [%s]", cfg.MarketMaker)
 	log.Println("========================================")
+
+	// 初始化价格存储
+	globalPriceStore = NewPriceStore("./data")
+	log.Printf("✓ 价格存储初始化完成 (已加载 %d 个交易对)", len(globalPriceStore.GetAllPrices()))
+
+	// 启动 HTTP API 服务器
+	go StartAPIServer(cfg.APIPort, globalPriceStore, cfg.APIKey)
+
+	// 检查是否有价格配置
+	if len(globalPriceStore.GetAllPrices()) == 0 {
+		log.Println("⚠️ 警告: 未配置任何价格，请通过 API 上传价格后再连接 Bebop")
+		log.Printf("   POST http://localhost%s/api/price", cfg.APIPort)
+	}
 
 	for retryCount := 0; ; retryCount++ {
 		if runMarketMaker(cfg) {
@@ -39,6 +63,44 @@ func main() {
 		}
 		log.Printf("🔄 %v 后重连 (#%d)...", retryDelay, retryCount+1)
 		time.Sleep(retryDelay)
+	}
+}
+
+// loadConfigFromEnv 从环境变量加载配置
+func loadConfigFromEnv() Config {
+	chainID := 56
+	if v := os.Getenv("CHAIN_ID"); v != "" {
+		if id, err := strconv.Atoi(v); err == nil {
+			chainID = id
+		}
+	}
+
+	selfExec := true
+	if v := os.Getenv("SELF_EXECUTION"); v != "" {
+		selfExec = strings.ToLower(v) == "true"
+	}
+
+	priceSpread := 0.005
+	if v := os.Getenv("PRICE_SPREAD"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			priceSpread = f
+		}
+	}
+
+	apiPort := ":8080"
+	if v := os.Getenv("API_PORT"); v != "" {
+		apiPort = v
+	}
+
+	return Config{
+		ChainID:       uint32(chainID),
+		PrivateKey:    os.Getenv("PRIVATE_KEY"),
+		MarketMaker:   os.Getenv("MARKET_MAKER"),
+		Authorization: os.Getenv("AUTHORIZATION"),
+		SelfExecution: selfExec,
+		PriceSpread:   priceSpread,
+		APIPort:       apiPort,
+		APIKey:        os.Getenv("PRICE_API_KEY"),
 	}
 }
 

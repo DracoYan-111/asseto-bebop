@@ -7,6 +7,7 @@ toolchain go1.24.12
 require (
 	github.com/ethereum/go-ethereum v1.16.8
 	github.com/gorilla/websocket v1.5.3
+	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.47.0
 	google.golang.org/protobuf v1.36.11
 )

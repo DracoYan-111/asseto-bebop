@@ -3,6 +3,7 @@ package main
 import (
 	pb "asseto-bebop/proto"
 	"asseto-bebop/utils"
+	"log"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -19,12 +20,9 @@ const (
 	SelfExecuteMode                      // 用户自执行（用户自己支付 gas）
 )
 
-// 价差配置
+// 默认配置
 const (
-	selfExecuteSpread = 0.003 // 自执行模式价差 (0.3%)
-	gaslessSpread     = 0.005 // 代执行模式基础价差 (0.5%)
-	gasEstimateUSD    = 10.0  // 预估 gas 成本 (USD)
-	defaultChainID    = 56    // 默认链 ID (BSC)
+	defaultChainID = 56 // 默认链 ID (BSC)
 )
 
 // =============================================================================
@@ -52,26 +50,39 @@ type PricingData struct {
 // 公共函数
 // =============================================================================
 
-// CreateSamplePricing 创建示例定价数据（默认自执行模式）
+// CreateSamplePricing 创建定价数据（默认自执行模式）
 func CreateSamplePricing() PricingData {
 	return CreateSamplePricingWithMode(SelfExecuteMode)
 }
 
 // CreateSamplePricingWithMode 根据执行模式创建定价数据
+// 从 PriceStore 获取动态价格
 func CreateSamplePricingWithMode(mode ExecutionMode) PricingData {
-	// 计算价差
-	wbnbSpread := calculateSpread(mode, wbnbUsdtMid)
-	cashSpread := calculateSpread(mode, cashPlusUsdtMid)
+	levels := []PairLevel{}
+
+	// 获取所有已配置的价格
+	prices := globalPriceStore.GetAllPrices()
+
+	if len(prices) == 0 {
+		log.Println("⚠️ 未配置任何价格，将生成空的 Pricing 数据")
+	}
+
+	for _, price := range prices {
+		level := PairLevel{
+			BaseAddress:   price.BaseToken,
+			BaseDecimals:  price.BaseDecimals, // 使用运营上传的精度
+			QuoteAddress:  price.QuoteToken,
+			QuoteDecimals: price.QuoteDecimals, // 使用运营上传的精度
+			Bids:          price.Bids,          // 直接使用运营上传的 levels
+			Asks:          price.Asks,
+		}
+		levels = append(levels, level)
+	}
 
 	return PricingData{
 		ChainID:      defaultChainID,
 		MakerAddress: makerAddr,
-		Levels: []PairLevel{
-			buildPairLevel(wbnbAddress, wbnbDecimals, usdtAddress, usdtDecimals, wbnbUsdtMid, wbnbSpread),
-			buildPairLevel(wbnbAddress, wbnbDecimals, usdcAddress, usdcDecimals, wbnbUsdtMid, wbnbSpread),
-			buildPairLevel(cashPlusAddress, cashPlusDecimals, usdcAddress, usdcDecimals, cashPlusUsdtMid, cashSpread),
-			buildPairLevel(cashPlusAddress, cashPlusDecimals, usdtAddress, usdtDecimals, cashPlusUsdtMid, cashSpread),
-		},
+		Levels:       levels,
 	}
 }
 
@@ -97,48 +108,6 @@ func BuildPricingMessage(data PricingData) ([]byte, error) {
 	}
 
 	return proto.Marshal(msg)
-}
-
-// =============================================================================
-// 内部辅助函数
-// =============================================================================
-
-// calculateSpread 根据执行模式和中间价计算价差
-func calculateSpread(mode ExecutionMode, midPrice float64) float64 {
-	if mode == SelfExecuteMode {
-		return selfExecuteSpread
-	}
-	// Gasless 模式：基础价差 + gas 影响
-	if midPrice > 0 {
-		return gaslessSpread + gasEstimateUSD/midPrice
-	}
-	return gaslessSpread
-}
-
-// buildPairLevel 构建交易对价格层级
-// 默认生成 3 层深度：0.2, 0.3, 0.4 个基础代币
-func buildPairLevel(baseAddr string, baseDec uint32, quoteAddr string, quoteDec uint32, midPrice, spread float64) PairLevel {
-	return PairLevel{
-		BaseAddress:   baseAddr,
-		BaseDecimals:  baseDec,
-		QuoteAddress:  quoteAddr,
-		QuoteDecimals: quoteDec,
-		Bids:          generateLevels(midPrice, spread, -1), // 买单：价格递减
-		Asks:          generateLevels(midPrice, spread, +1), // 卖单：价格递增
-	}
-}
-
-// generateLevels 生成价格层级
-// direction: -1 表示买单（价格递减），+1 表示卖单（价格递增）
-func generateLevels(midPrice, spread float64, direction int) [][2]float64 {
-	amounts := [3]float64{0.2, 0.3, 0.4} // 各层数量
-	levels := make([][2]float64, len(amounts))
-
-	for i, amount := range amounts {
-		multiplier := 1 + float64(direction)*spread*float64(i+1)
-		levels[i] = [2]float64{midPrice * multiplier, amount}
-	}
-	return levels
 }
 
 // flattenLevels 将层级数组扁平化为 [price, amount, price, amount, ...]

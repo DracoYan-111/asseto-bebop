@@ -12,10 +12,6 @@ import (
 // =============================================================================
 
 const (
-	// 代币价格（USD）
-	wbnbUsdtMid     = 879.00 // WBNB 价格
-	cashPlusUsdtMid = 106.71 // CASH+ 价格
-
 	// Maker 地址
 	makerAddr = "0x95B89a3bB25FCBeD8E30052a8BDf77f106c1B554"
 )
@@ -71,6 +67,8 @@ type Config struct {
 	Authorization string
 	SelfExecution bool
 	PriceSpread   float64
+	APIPort       string // HTTP API 端口，例如 ":8080"
+	APIKey        string // API Key 用于认证
 }
 
 // MessageHandler WebSocket 消息处理器

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price API Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; color: #f1f5f9; }
+        .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav a { padding: 10px 20px; background: #1e293b; color: #94a3b8; text-decoration: none; border-radius: 6px; transition: all 0.2s; }
+        .nav a:hover, .nav a.active { background: #3b82f6; color: white; }
+        .card { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .card-title { font-size: 1.1rem; margin-bottom: 15px; color: #f1f5f9; display: flex; align-items: center; gap: 10px; }
+        .badge { font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+        .badge-get { background: #22c55e; color: white; }
+        .badge-post { background: #eab308; color: black; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
+        .form-group input, .form-group textarea { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-family: monospace; }
+        .form-group textarea { min-height: 150px; resize: vertical; }
+        .btn { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; }
+        .btn:hover { background: #2563eb; }
+        .btn:disabled { background: #475569; cursor: not-allowed; }
+        .result { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 15px; margin-top: 15px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; }
+        .status { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 10px; }
+        .status-ok { background: #22c55e20; color: #22c55e; }
+        .status-error { background: #ef444420; color: #ef4444; }
+        .health-indicator { display: flex; align-items: center; gap: 10px; }
+        .health-dot { width: 12px; height: 12px; border-radius: 50%; background: #475569; }
+        .health-dot.ok { background: #22c55e; animation: pulse 2s infinite; }
+        .health-dot.error { background: #ef4444; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .config-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .config-bar input { flex: 1; min-width: 200px; padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; }
+        .hidden { display: none; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .table th, .table td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        .table th { color: #94a3b8; font-weight: 500; font-size: 0.85rem; }
+        .table td { font-family: monospace; font-size: 0.85rem; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-row .form-group { flex: 1; margin-bottom: 0; }
+        .order-section { margin-bottom: 20px; }
+        .order-section h4 { color: #94a3b8; font-size: 0.9rem; margin-bottom: 10px; }
+        .order-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+        .order-row input { flex: 1; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-family: monospace; }
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+        .btn-add { background: #22c55e; }
+        .btn-add:hover { background: #16a34a; }
+        .btn-remove { background: #ef4444; padding: 6px 10px; }
+        .btn-remove:hover { background: #dc2626; }
+        .bid-label { color: #22c55e; }
+        .ask-label { color: #ef4444; }
+        .level-card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .level-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .level-header h3 { font-size: 1rem; color: #f1f5f9; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Price API Dashboard</h1>
+
+        <div class="config-bar">
+            <input type="text" id="baseUrl" placeholder="API Base URL" value="http://localhost:8080">
+            <input type="text" id="apiKey" placeholder="API Key (X-API-Key)">
+        </div>
+
+        <nav class="nav">
+            <a href="#" data-page="health" class="active">Health</a>
+            <a href="#" data-page="prices">Prices</a>
+            <a href="#" data-page="history">History</a>
+            <a href="#" data-page="update">Update Price</a>
+        </nav>
+
+        <!-- Health Page -->
+        <div id="page-health" class="page">
+            <div class="card">
+                <div class="card-title"><span class="badge badge-get">GET</span> /health</div>
+                <div class="health-indicator">
+                    <div class="health-dot" id="healthDot"></div>
+                    <span id="healthText">未检查</span>
+                </div>
+                <button class="btn" onclick="checkHealth()" style="margin-top: 15px;">检查健康状态</button>
+                <div class="result" id="healthResult"></div>
+            </div>
+        </div>
+
+        <!-- Prices Page -->
+        <div id="page-prices" class="page hidden">
+            <div class="card">
+                <div class="card-title"><span class="badge badge-get">GET</span> /api/prices</div>
+                <button class="btn" onclick="getPrices()">获取所有价格</button>
+                <div class="result" id="pricesResult"></div>
+            </div>
+        </div>
+
+        <!-- History Page -->
+        <div id="page-history" class="page hidden">
+            <div class="card">
+                <div class="card-title"><span class="badge badge-get">GET</span> /api/price/history</div>
+                <div class="form-group">
+                    <label>Limit (可选)</label>
+                    <input type="number" id="historyLimit" placeholder="100" value="100">
+                </div>
+                <button class="btn" onclick="getHistory()">获取历史记录</button>
+                <div class="result" id="historyResult"></div>
+            </div>
+        </div>
+
+        <!-- Update Price Page -->
+        <div id="page-update" class="page hidden">
+            <div class="card">
+                <div class="card-title"><span class="badge badge-post">POST</span> /api/price</div>
+
+                <div class="form-group">
+                    <label>Operator (可选)</label>
+                    <input type="text" id="operator" placeholder="admin">
+                </div>
+
+                <div id="levelsContainer"></div>
+
+                <button class="btn btn-add" onclick="addLevel()" style="margin-bottom: 15px;">+ 添加交易对</button>
+
+                <button class="btn" onclick="updatePrice()">提交价格</button>
+                <div class="result" id="updateResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Navigation
+        document.querySelectorAll('.nav a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = e.target.dataset.page;
+                document.querySelectorAll('.nav a').forEach(l => l.classList.remove('active'));
+                e.target.classList.add('active');
+                document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+                document.getElementById('page-' + page).classList.remove('hidden');
+            });
+        });
+
+        function getConfig() {
+            return {
+                baseUrl: document.getElementById('baseUrl').value.replace(/\/$/, ''),
+                apiKey: document.getElementById('apiKey').value
+            };
+        }
+
+        function getHeaders() {
+            const { apiKey } = getConfig();
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) headers['X-API-Key'] = apiKey;
+            return headers;
+        }
+
+        function formatResult(data, status) {
+            return JSON.stringify(data, null, 2);
+        }
+
+        async function checkHealth() {
+            const { baseUrl } = getConfig();
+            const dot = document.getElementById('healthDot');
+            const text = document.getElementById('healthText');
+            const result = document.getElementById('healthResult');
+
+            try {
+                const res = await fetch(`${baseUrl}/health`);
+                const data = await res.json();
+                dot.className = 'health-dot ok';
+                text.textContent = `正常 - ${data.prices} 个价格`;
+                result.innerHTML = `<span class="status status-ok">200 OK</span>\n` + formatResult(data);
+            } catch (err) {
+                dot.className = 'health-dot error';
+                text.textContent = '连接失败';
+                result.innerHTML = `<span class="status status-error">Error</span>\n` + err.message;
+            }
+        }
+
+        async function getPrices() {
+            const { baseUrl } = getConfig();
+            const result = document.getElementById('pricesResult');
+
+            try {
+                const res = await fetch(`${baseUrl}/api/prices`, { headers: getHeaders() });
+                const data = await res.json();
+                const statusClass = res.ok ? 'status-ok' : 'status-error';
+                result.innerHTML = `<span class="status ${statusClass}">${res.status}</span>\n` + formatResult(data);
+            } catch (err) {
+                result.innerHTML = `<span class="status status-error">Error</span>\n` + err.message;
+            }
+        }
+
+        async function getHistory() {
+            const { baseUrl } = getConfig();
+            const limit = document.getElementById('historyLimit').value || 100;
+            const result = document.getElementById('historyResult');
+
+            try {
+                const res = await fetch(`${baseUrl}/api/price/history?limit=${limit}`, { headers: getHeaders() });
+                const data = await res.json();
+                const statusClass = res.ok ? 'status-ok' : 'status-error';
+                result.innerHTML = `<span class="status ${statusClass}">${res.status}</span>\n` + formatResult(data);
+            } catch (err) {
+                result.innerHTML = `<span class="status status-error">Error</span>\n` + err.message;
+            }
+        }
+
+        let levelCounter = 0;
+
+        function addLevel() {
+            const container = document.getElementById('levelsContainer');
+            const levelId = levelCounter++;
+            const levelDiv = document.createElement('div');
+            levelDiv.className = 'level-card';
+            levelDiv.id = `level-${levelId}`;
+            levelDiv.innerHTML = `
+                <div class="level-header">
+                    <h3>交易对 #${levelId + 1}</h3>
+                    <button class="btn btn-sm btn-danger" onclick="removeLevel(${levelId})">删除</button>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Base Token</label>
+                        <input type="text" class="base-token" placeholder="0x...">
+                    </div>
+                    <div class="form-group">
+                        <label>Base Decimals</label>
+                        <input type="number" class="base-decimals" placeholder="18" value="18">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Quote Token</label>
+                        <input type="text" class="quote-token" placeholder="0x...">
+                    </div>
+                    <div class="form-group">
+                        <label>Quote Decimals</label>
+                        <input type="number" class="quote-decimals" placeholder="6" value="6">
+                    </div>
+                </div>
+                <div class="order-section">
+                    <h4 class="bid-label">Bids (买单)</h4>
+                    <div class="bids-container">
+                        <div class="order-row">
+                            <input type="number" step="any" placeholder="价格" class="bid-price">
+                            <input type="number" step="any" placeholder="数量" class="bid-amount">
+                            <button class="btn btn-sm btn-remove" onclick="removeOrderRow(this)">-</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-add" onclick="addOrderRow(this, 'bid')">+ 添加买单</button>
+                </div>
+                <div class="order-section">
+                    <h4 class="ask-label">Asks (卖单)</h4>
+                    <div class="asks-container">
+                        <div class="order-row">
+                            <input type="number" step="any" placeholder="价格" class="ask-price">
+                            <input type="number" step="any" placeholder="数量" class="ask-amount">
+                            <button class="btn btn-sm btn-remove" onclick="removeOrderRow(this)">-</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-add" onclick="addOrderRow(this, 'ask')">+ 添加卖单</button>
+                </div>
+            `;
+            container.appendChild(levelDiv);
+        }
+
+        function removeLevel(levelId) {
+            const level = document.getElementById(`level-${levelId}`);
+            if (level) level.remove();
+        }
+
+        function addOrderRow(btn, type) {
+            const container = btn.previousElementSibling;
+            const row = document.createElement('div');
+            row.className = 'order-row';
+            row.innerHTML = `
+                <input type="number" step="any" placeholder="价格" class="${type}-price">
+                <input type="number" step="any" placeholder="数量" class="${type}-amount">
+                <button class="btn btn-sm btn-remove" onclick="removeOrderRow(this)">-</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeOrderRow(btn) {
+            const row = btn.parentElement;
+            const container = row.parentElement;
+            if (container.querySelectorAll('.order-row').length > 1) {
+                row.remove();
+            }
+        }
+
+        function collectLevels() {
+            const levels = [];
+            const levelCards = document.querySelectorAll('.level-card');
+
+            levelCards.forEach(card => {
+                const baseToken = card.querySelector('.base-token').value.trim();
+                const quoteToken = card.querySelector('.quote-token').value.trim();
+                const baseDecimals = parseInt(card.querySelector('.base-decimals').value) || 18;
+                const quoteDecimals = parseInt(card.querySelector('.quote-decimals').value) || 6;
+
+                const bids = [];
+                card.querySelectorAll('.bids-container .order-row').forEach(row => {
+                    const price = parseFloat(row.querySelector('.bid-price').value);
+                    const amount = parseFloat(row.querySelector('.bid-amount').value);
+                    if (!isNaN(price) && !isNaN(amount) && price > 0 && amount > 0) {
+                        bids.push([price, amount]);
+                    }
+                });
+
+                const asks = [];
+                card.querySelectorAll('.asks-container .order-row').forEach(row => {
+                    const price = parseFloat(row.querySelector('.ask-price').value);
+                    const amount = parseFloat(row.querySelector('.ask-amount').value);
+                    if (!isNaN(price) && !isNaN(amount) && price > 0 && amount > 0) {
+                        asks.push([price, amount]);
+                    }
+                });
+
+                if (baseToken && quoteToken && bids.length > 0 && asks.length > 0) {
+                    levels.push({
+                        base_token: baseToken,
+                        quote_token: quoteToken,
+                        base_decimals: baseDecimals,
+                        quote_decimals: quoteDecimals,
+                        bids: bids,
+                        asks: asks
+                    });
+                }
+            });
+
+            return levels;
+        }
+
+        async function updatePrice() {
+            const { baseUrl } = getConfig();
+            const result = document.getElementById('updateResult');
+            const operator = document.getElementById('operator').value;
+
+            const levels = collectLevels();
+
+            if (levels.length === 0) {
+                result.innerHTML = `<span class="status status-error">Error</span>\n请添加至少一个完整的交易对（包含 Token 地址和有效的 Bid/Ask）`;
+                return;
+            }
+
+            const body = { levels };
+            if (operator) body.operator = operator;
+
+            try {
+                const res = await fetch(`${baseUrl}/api/price`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                const statusClass = res.ok ? 'status-ok' : 'status-error';
+                result.innerHTML = `<span class="status ${statusClass}">${res.status}</span>\n` + formatResult(data);
+            } catch (err) {
+                result.innerHTML = `<span class="status status-error">Error</span>\n` + err.message;
+            }
+        }
+
+        // 初始化时添加一个默认的 Level
+        addLevel();
+
+        // Auto-check health on load
+        checkHealth();
+    </script>
+</body>
+</html>
