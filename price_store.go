@@ -232,6 +232,15 @@ func (s *PriceStore) GetHistory(limit int) []PriceHistory {
 	return result
 }
 
+// ClearPrices 清空所有价格数据并持久化
+func (s *PriceStore) ClearPrices() error {
+	s.Lock()
+	defer s.Unlock()
+
+	s.prices = make(map[string]PairPrice)
+	return s.savePrices()
+}
+
 // =============================================================================
 // 持久化
 // =============================================================================

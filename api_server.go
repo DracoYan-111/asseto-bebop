@@ -44,6 +44,7 @@ func StartAPIServer(addr string, priceStore *PriceStore, apiKey string) {
 	// 价格 API（需要认证）
 	mux.HandleFunc("/api/price", server.withAuth(server.handlePrice))
 	mux.HandleFunc("/api/prices", server.withAuth(server.handlePrices))
+	mux.HandleFunc("/api/prices/clear", server.withAuth(server.handleClearPrices))
 	mux.HandleFunc("/api/price/history", server.withAuth(server.handleHistory))
 
 	log.Printf("🌐 HTTP API 服务器启动: %s", addr)
@@ -61,7 +62,7 @@ func StartAPIServer(addr string, priceStore *PriceStore, apiKey string) {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
 
 		if r.Method == "OPTIONS" {
@@ -214,6 +215,30 @@ func (s *APIServer) handleHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"count":   len(history),
 		"history": history,
+	})
+}
+
+// handleClearPrices DELETE 清空所有价格数据
+func (s *APIServer) handleClearPrices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := s.priceStore.ClearPrices(); err != nil {
+		log.Printf("✗ 清空价格数据失败: %v", err)
+		http.Error(w, `{"error": "Failed to clear prices"}`, http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("✓ 所有价格数据已清空")
+	log.Println("⚠️ 未配置任何价格，将生成空的 Pricing 数据")
+	log.Println("⏸️ 已停止上传定价内容，请通过 API 重新上传价格后恢复")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "All prices cleared",
 	})
 }
 
